@@ -1,4 +1,4 @@
 Raft algorithm implementation
 =======
 
-Authors: Juan Maldonado & Josep Rodríguez
+Authors: Joan Maldonado & Josep Rodríguez
