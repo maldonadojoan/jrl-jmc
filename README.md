@@ -1,3 +1,4 @@
-jrl-jmc
+Raft algorithm implementation
 =======
-README
+
+Authors: Juan Maldonado & Josep Rodríguez
