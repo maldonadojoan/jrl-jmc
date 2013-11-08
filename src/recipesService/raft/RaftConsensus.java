@@ -144,6 +144,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		/*
 		 *  ACTIONS TO DO EACH TIME THE SERVER CONNECTS (i.e. when it starts or after a failure or disconnection)
 		 */
+		
+		// TODO On connect, start worker threads to start raft algorithm.
 	}
 	
 	public void disconnect(){
