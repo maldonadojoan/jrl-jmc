@@ -192,11 +192,87 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	private AppendEntriesResponse followerAppendEntries(long term, String leaderId,
 			int prevLogIndex, long prevLogTerm, List<LogEntry> entries,
 			int leaderCommit) {
-		// TODO Auto-generated method stub
+		// If stale leader, notify him
+		if ( term < persistentState.getCurrentTerm() ) {
+			return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
+		}
+
+		// If not a stale leader, count from now the heartbeat.
 		onHeartbeat();
+		
+		// If current term, try to append to log.
+		if ( term == persistentState.getCurrentTerm() ) {
+			// If correct log and term index...
+			if ( prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() ) {
+				
+				// Store it to log.
+				for ( LogEntry entry : entries ) {
+					persistentState.appendEntry(entry);
+				}
+				
+				// XXX JOSEP Commit log up to commitIndex.
+				
+				return new AppendEntriesResponse(term, true);
+			}
+			// If not correct, notify the leader that we need a previous log first.
+			else {
+				return new AppendEntriesResponse(term, false);
+			}
+		}
+		
+		// XXX JOSEP If a newer term, the same as current?
 		
 		
 		return null;
+	}
+	
+	/**
+	 * leader code for serving a request to a user.
+	 * 
+	 * Invoked by a client to apply an operation to the recipes' service
+	 * Operation may be: AddOpperation (to add a recipe) or RemoveOperation (to remove a recipe)
+	 * @param Operation: operation to apply to recipes
+	 * @return RequestResponse: the leaderId and a boolean that indicates if operation succeeded or not
+	 * @throws RemoteException
+	 */
+	private RequestResponse leaderRequest(Operation operation) {
+		// Step 1 -> store to my own log.
+		persistentState.addEntry(operation);
+
+		int indexCommitRequired = 1000; // XXX JOSEP GET COMMIT REQUIRED
+		
+		// Step 2 -> Start sending append entries to the rest of the cluster. There is already
+		// A thread doing this, so we just have to wait for the thread to get to the current operation and break.
+		// We have to be careful for:
+		// * State changes (if we become a leader we won't commit any more data).
+		// *  
+		do {
+			if (state == RaftState.LEADER) {
+				// If we have changed of state unsuccessful request.
+				return new RequestResponse(getServerId(), false);		
+			}
+			
+			if ( isIndexCommitted(indexCommitRequired) ) {
+				break;
+			}
+			try {
+				Thread.sleep(50);
+			} catch ( Exception e ) {
+				// nop, if we have been interrupted to stop this thread because of a state change, we will be stopped on the first if.
+			}
+		} while (true);
+		
+		// If we have reached this point, the entry has been committed.
+		return new RequestResponse(getServerId(), true);
+	}
+
+	/**
+	 * @param index the index of the log which we try to know if it is committed. 
+	 * @return true if it has been committed.
+	 */
+	private boolean isIndexCommitted(int indexCommitRequired) {
+		// XXX JOSEP Auto-generated method stub
+		return true;
 	}
 
 	/**
@@ -282,7 +358,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * Executed once a heartbeat is received.
 	 */
 	private void onHeartbeat() {
-		// TODO Auto-generated method stub
+		// XXX JOSEP Auto-generated method stub
 		
 	}
 	
@@ -295,7 +371,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @param follower
 	 */
 	private void changeState(RaftState follower) {
-		// TODO Auto-generated method stub
+		// XXX JOSEP Auto-generated method stub
 		
 	}
 
@@ -333,16 +409,16 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 	@Override
 	public RequestResponse Request(Operation operation) throws RemoteException {
-		// TODO Auto-generated method stub
-		//		if ( ! is leader ) {
-		// redirect to leader.
-		//		}
-
-		//		Append entries to followers until the commit is from this index.
-
-		return null;
+		// If follower and candidate, redirect him to the last leader known, so it will retry.
+		switch ( state ) {
+		default:
+		case FOLLOWER: 
+		case CANDIDATE: // TODO WHERE SHOULD CANDIDATE REDIRECT?
+			return new RequestResponse(leader, false);
+		case LEADER:
+			return leaderRequest(operation);
+		}
 	}
-
 
 	//
 	// Other methods
