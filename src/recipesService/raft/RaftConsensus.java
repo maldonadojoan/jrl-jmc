@@ -21,6 +21,7 @@ package recipesService.raft;
 
 
 import java.rmi.RemoteException;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -82,6 +83,21 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	// Leader election
 	private Timer electionTimeoutTimer; // timer for election timeout
 	private long electionTimeout; // period of time that a follower receives no communication.
+	
+	/** TimerTask who notices that a leader has collapsed */
+	private final TimerTask electionTimeoutTimerTask = new TimerTask() {
+		
+		@Override
+		public void run() {
+			// If we are not a leader, start an election.
+			if ( !isLeader() ) { 
+				// TODO Start election
+				System.out.println("STARTING ELECTION ON HOST " + getServerId());
+			}
+		}
+	};
+
+	
 	// If a timeout occurs, it assumes there is no viable leader.
 	private Set<Host> receivedVotes; // contains hosts that have voted for this server as candidate in a leader election
 
@@ -147,14 +163,32 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 *  ACTIONS TO DO EACH TIME THE SERVER CONNECTS (i.e. when it starts or after a failure or disconnection)
 		 */
 		
-		// TODO On connect, start worker threads to start raft algorithm.
+		// Start the election timeout.
+		electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
+	}
+
+	/**
+	 * Calculates the timestamp of the moment the leader will be assumed to be stale.
+	 * 
+	 * @return System.currentTimeMillis() + randomTimeout.
+	 */
+	private Date getTimeoutDate() {
+		return new Date(System.currentTimeMillis() + (long) (rnd.nextFloat() * electionTimeout) + electionTimeout); 
+		// random float between 0 and 1 * timeout + timeout means a value between [electionTimeout , electionTimeout * 2].
 	}
 
 	public void disconnect(){
 		electionTimeoutTimer.cancel();
-		if (localHost.getId().equals(leader)){
+		if (isLeader()){
 			leaderHeartbeatTimeoutTimer.cancel();
 		}
+	}
+
+	/**
+	 * @return true if the localhost server is leader of the cluster.
+	 */
+	protected boolean isLeader() {
+		return localHost.getId().equals(leader);
 	}
 
 
@@ -199,31 +233,29 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 		// If not a stale leader, count from now the heartbeat.
 		onHeartbeat();
-		
-		// If current term, try to append to log.
-		if ( term == persistentState.getCurrentTerm() ) {
-			// If correct log and term index...
-			if ( prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() ) {
-				
-				// Store it to log.
-				for ( LogEntry entry : entries ) {
-					persistentState.appendEntry(entry);
-				}
-				
-				// XXX JOSEP Commit log up to commitIndex.
-				
-				return new AppendEntriesResponse(term, true);
-			}
-			// If not correct, notify the leader that we need a previous log first.
-			else {
-				return new AppendEntriesResponse(term, false);
-			}
+
+		// If in a newer term, update my own to the newer.
+		if ( term > persistentState.getCurrentTerm() ) {
+			persistentState.setCurrentTerm(term);
 		}
 		
-		// XXX JOSEP If a newer term, the same as current?
-		
-		
-		return null;
+		// Here on, always current term. Try to append to log.
+		// If correct log and term index...
+		if ( prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() ) {
+
+			// Store it to log.
+			for ( LogEntry entry : entries ) {
+				persistentState.appendEntry(entry);
+			}
+
+			// XXX JOSEP Commit log up to commitIndex.
+			
+			return new AppendEntriesResponse(term, true);
+		}
+		// If not correct, notify the leader that we need a previous log first.
+		else {
+			return new AppendEntriesResponse(term, false);
+		}
 	}
 	
 	/**
@@ -239,22 +271,29 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// Step 1 -> store to my own log.
 		persistentState.addEntry(operation);
 
-		int indexCommitRequired = 1000; // XXX JOSEP GET COMMIT REQUIRED
+		// The last index is the one we will need to get
+		int indexCommitRequired = persistentState.getLastLogIndex();
 		
 		// Step 2 -> Start sending append entries to the rest of the cluster. There is already
 		// A thread doing this, so we just have to wait for the thread to get to the current operation and break.
 		// We have to be careful for:
 		// * State changes (if we become a leader we won't commit any more data).
-		// *  
+		// * ??
 		do {
 			if (state == RaftState.LEADER) {
 				// If we have changed of state unsuccessful request.
 				return new RequestResponse(getServerId(), false);		
 			}
 			
-			if ( isIndexCommitted(indexCommitRequired) ) {
+			// Commit index MUST be updated when persisted at threads.
+			if ( indexCommitRequired >= commitIndex ) {
 				break;
 			}
+			
+//			Alternative way
+//			if ( isIndexCommitted(indexCommitRequired) ) {
+//				break;
+//			}
 			try {
 				Thread.sleep(50);
 			} catch ( Exception e ) {
@@ -271,8 +310,21 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @return true if it has been committed.
 	 */
 	private boolean isIndexCommitted(int indexCommitRequired) {
-		// XXX JOSEP Auto-generated method stub
-		return true;
+		int requiredCount = 1 + (numServers / 2); // At least one more than a half.
+		int count = 0;
+		for ( Host h : otherServers ) {
+			int otherIndex = matchIndex.getIndex(h.getId());
+			
+			// If the index is higher than the required one, increase count.
+			if ( otherIndex >= indexCommitRequired ) {
+				count ++;
+			}
+			// If already at half the cluster, it is committed.
+			if ( count == requiredCount ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -358,8 +410,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * Executed once a heartbeat is received.
 	 */
 	private void onHeartbeat() {
-		// XXX JOSEP Auto-generated method stub
-		
+		// Reset the timer to a new timeout date.
+		if ( electionTimeoutTimerTask.cancel() ) {
+			electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
+		}
 	}
 	
 	//
@@ -368,9 +422,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	
 	/**
 	 * Executed when a change of state occurs.
-	 * @param follower
+	 * @param state
 	 */
-	private void changeState(RaftState follower) {
+	private void changeState(RaftState state) {
 		// XXX JOSEP Auto-generated method stub
 		
 	}
