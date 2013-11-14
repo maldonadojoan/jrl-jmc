@@ -32,10 +32,8 @@ import java.util.Vector;
 
 import javax.swing.plaf.basic.BasicInternalFrameTitlePane.MaximizeAction;
 
-
 import communication.DSException;
 import communication.rmi.RMIsd;
-
 import recipesService.CookingRecipes;
 import recipesService.activitySimulation.SimulationData;
 import recipesService.communication.Host;
@@ -90,13 +88,16 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		@Override
 		public void run() {
 			// If we are not a leader, start an election.
+			String serverId = getServerId();
 			if ( !isLeader() ) { 
 				// TODO Start election
-				System.out.println("STARTING ELECTION ON HOST " + getServerId());
+				System.out.println("STARTING ELECTION ON HOST " + serverId);
+				leaderElection(serverId);
 			}
 		}
 	};
 
+	private RMIsd communication; //RPC communication
 	
 	// If a timeout occurs, it assumes there is no viable leader.
 	private Set<Host> receivedVotes; // contains hosts that have voted for this server as candidate in a leader election
@@ -164,6 +165,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 */
 		
 		// Start the election timeout.
+		electionTimeoutTimer = new Timer();
 		electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
 	}
 
@@ -199,6 +201,30 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	/*
 	 *  Leader election
 	 */
+	private void leaderElection(String serverId) {
+	// Steps
+		// 1-Increment current term
+		long newTerm = this.persistentState.getCurrentTerm() +1;
+		this.persistentState.setCurrentTerm(newTerm);
+		// 2-Change to candidate state
+		this.state = RaftState.CANDIDATE;
+		// 3-Vote for self
+		this.persistentState.setVotedFor(serverId);
+		// 4-Send RequestVote RPC to all other servers
+		try {
+			this.requestVote(newTerm, serverId, this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
+		} catch (RemoteException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		// 5. Retry until:
+			// 5.1. Receive votes from majority of servers
+			// 5.2. Receive RPC from a valid Leader
+			// 5.3. Election timeout elapses (no one wins the election)
+				// 5.3.1. Increment current term
+				// 5.3.2. Start a new election
+		
+	}
 
 
 
@@ -437,6 +463,18 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	public RequestVoteResponse requestVote(long term, String candidateId,
 			int lastLogIndex, long lastLogTerm) throws RemoteException {
 		// TODO Auto-generated method stub
+		String serverIdTmp;
+		RequestVoteResponse voteResponse;
+		for( int i = 0 ; i < this.otherServers.size() ; i++ ){
+			Host hostTmp = this.otherServers.get(i);
+			serverIdTmp = hostTmp.getId();
+			try {
+				voteResponse = communication.requestVote(hostTmp.getId(), term, candidateId, lastLogIndex, lastLogTerm);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
 		return null;
 	}
 
