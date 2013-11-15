@@ -469,9 +469,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			Host hostTmp = this.otherServers.get(i);
 			serverIdTmp = hostTmp.getId();
 			try {
-				voteResponse = communication.requestVote(hostTmp.getId(), term, candidateId, lastLogIndex, lastLogTerm);
+				voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
+				System.out.println("DEBUG 1");
 				e.printStackTrace();
 			}
 		}
