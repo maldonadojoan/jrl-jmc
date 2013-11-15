@@ -29,6 +29,8 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.swing.plaf.basic.BasicInternalFrameTitlePane.MaximizeAction;
 
@@ -123,6 +125,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	// partner servers
 	private List<Host> otherServers; // list of partner servers (localHost not included in the list)
 
+	private ExecutorService executorQueue;
+
 	//
 	// UTILS
 	//
@@ -138,7 +142,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		this.electionTimeout = electionTimeout;
 
 		//set leaderHeartbeatTimeout
-		this.leaderHeartbeatTimeout = electionTimeout / 3; //TODO: Cal revisar-ne el valor 
+		this.leaderHeartbeatTimeout = electionTimeout / 3; //TODO: Cal revisar-ne el valor
+		
+	    // Create the executor queue.
+		this.executorQueue = Executors.newCachedThreadPool();
 	}
 
 	// sets localhost and other servers participating in the cluster
@@ -154,7 +161,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 		// set servers list
 		this.otherServers = otherServers;
-		numServers = otherServers.size() + 1;	
+		numServers = otherServers.size() + 1;
 	}
 
 	// connect
@@ -229,6 +236,25 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 									//  similar to the heartbeat one. Again, increase term.
 				// 5.3.1. Increment current term // The timer would make this actions.
 				// 5.3.2. Start a new election
+		
+		
+		// Example thread usage:
+//		final int electionTerm = 5; //Example
+//		Object guard = null;
+//		doInBackground(new RaftGuardedRunnable(guard, 5) {
+//			
+//			@Override
+//			public boolean doRun() {
+//				// This part is executed in a synchronized environment, and retried 5 times if it has failed.
+//				return communication.requestVote(destination, term, id, lastLogIndex, lastLogTerm);
+//			}
+//			
+//			@Override
+//			public boolean canRun() {
+//				// when it becomes false, the runnable will cease to try to execute.
+//				return persistentState.getCurrentTerm() == electionTerm;
+//			}
+//		});
 	}
 
 
@@ -528,5 +554,63 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 	public synchronized List<LogEntry> getLog(){
 		return persistentState.getLog();
+	}
+	
+	// thread-safe runnables
+	/**
+	 * This class implements a runnable guarded with a given object, and with a given number of retries. 
+	 * @author josep
+	 */
+	public static abstract class RaftGuardedRunnable implements Runnable {
+
+		private Object guard;
+		private int retries;
+
+		/**
+		 * @param guard the guard object if any.
+		 * @param retries the number of retries to perform.
+		 */
+		public RaftGuardedRunnable(Object guard, int retries) {
+			this.guard = guard;
+			this.retries = retries;
+		}
+		
+		/*
+		 * (non-Javadoc)
+		 * @see java.lang.Runnable#run()
+		 */
+		@Override
+		public final void run() {
+			// Synchronized depending on the guard we have received
+			synchronized (guard) {
+				// If the thread can be ran (no change of states have occured in the meantime for example).
+				if ( canRun() ) {
+					// If the run has failed...
+					if ( ! doRun() ) {
+						// If still have retries...
+						if ( retries -- > 0 ) {
+							// Retry.
+							run();							
+						}
+					}
+				}
+			}
+		}
+		
+		/**
+		 * Executes the thread work.
+		 * @return true if it succeeded. False otherwise.
+		 */
+		public abstract boolean doRun();
+		
+		/**
+		 * @return true if the runnable can be run, false if it should be cancelled.
+		 */
+		public abstract boolean canRun();
+	}
+	
+	public void doInBackground ( RaftGuardedRunnable runnable ) {
+		// one call for each function that must be run in a separated thread
+	    executorQueue.execute(runnable);
 	}
 }
