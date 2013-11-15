@@ -29,6 +29,8 @@ import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.swing.plaf.basic.BasicInternalFrameTitlePane.MaximizeAction;
 
@@ -88,11 +90,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		@Override
 		public void run() {
 			// If we are not a leader, start an election.
-			String serverId = getServerId();
 			if ( !isLeader() ) { 
 				// TODO Start election
-				System.out.println("STARTING ELECTION ON HOST " + serverId);
-				leaderElection(serverId);
+				System.out.println("STARTING ELECTION ON HOST " + getServerId());
+				leaderElection();
 			}
 		}
 	};
@@ -124,6 +125,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	// partner servers
 	private List<Host> otherServers; // list of partner servers (localHost not included in the list)
 
+	private ExecutorService executorQueue;
+
 	//
 	// UTILS
 	//
@@ -139,7 +142,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		this.electionTimeout = electionTimeout;
 
 		//set leaderHeartbeatTimeout
-		this.leaderHeartbeatTimeout = electionTimeout / 3; //TODO: Cal revisar-ne el valor 
+		this.leaderHeartbeatTimeout = electionTimeout / 3; //TODO: Cal revisar-ne el valor
+		
+	    // Create the executor queue.
+		this.executorQueue = Executors.newCachedThreadPool();
 	}
 
 	// sets localhost and other servers participating in the cluster
@@ -155,7 +161,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 		// set servers list
 		this.otherServers = otherServers;
-		numServers = otherServers.size() + 1;	
+		numServers = otherServers.size() + 1;
 	}
 
 	// connect
@@ -201,29 +207,54 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	/*
 	 *  Leader election
 	 */
-	private void leaderElection(String serverId) {
+	private void leaderElection() {
 	// Steps
 		// 1-Increment current term
 		long newTerm = this.persistentState.getCurrentTerm() +1;
 		this.persistentState.setCurrentTerm(newTerm);
+		
+		// 1 - Or this
+		// persistentState.nextTerm();
+		
 		// 2-Change to candidate state
 		this.state = RaftState.CANDIDATE;
+		
 		// 3-Vote for self
-		this.persistentState.setVotedFor(serverId);
+		this.persistentState.setVotedFor(getServerId());
+		
 		// 4-Send RequestVote RPC to all other servers
 		try {
-			this.requestVote(newTerm, serverId, this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
+			//This method should start threads in an executor. For each server, a thread retrying and trying to get its vote.
+			this.requestVote(newTerm, getServerId(), this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
 		} catch (RemoteException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		// 5. Retry until:
-			// 5.1. Receive votes from majority of servers
-			// 5.2. Receive RPC from a valid Leader
-			// 5.3. Election timeout elapses (no one wins the election)
-				// 5.3.1. Increment current term
+		// 5. Retry until:  I think that this could be done by:
+			// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
+			// 5.2. Receive RPC from a valid Leader onAppendEntry, increase term. the threads of the executor must check if the term is correct.
+			// 5.3. Election timeout elapses (no one wins the election) This should be done with the other timer and a timer task,
+									//  similar to the heartbeat one. Again, increase term.
+				// 5.3.1. Increment current term // The timer would make this actions.
 				// 5.3.2. Start a new election
 		
+		
+		// Example thread usage:
+//		final int electionTerm = 5; //Example
+//		Object guard = null;
+//		doInBackground(new RaftGuardedRunnable(guard, 5) {
+//			
+//			@Override
+//			public boolean doRun() {
+//				// This part is executed in a synchronized environment, and retried 5 times if it has failed.
+//				return communication.requestVote(destination, term, id, lastLogIndex, lastLogTerm);
+//			}
+//			
+//			@Override
+//			public boolean canRun() {
+//				// when it becomes false, the runnable will cease to try to execute.
+//				return persistentState.getCurrentTerm() == electionTerm;
+//			}
+//		});
 	}
 
 
@@ -332,26 +363,28 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	}
 
 	/**
+	 * DELETE : persistent state can do this, just keep it until we are sure we don't need it.
 	 * @param index the index of the log which we try to know if it is committed. 
 	 * @return true if it has been committed.
-	 */
-	private boolean isIndexCommitted(int indexCommitRequired) {
-		int requiredCount = 1 + (numServers / 2); // At least one more than a half.
-		int count = 0;
-		for ( Host h : otherServers ) {
-			int otherIndex = matchIndex.getIndex(h.getId());
-			
-			// If the index is higher than the required one, increase count.
-			if ( otherIndex >= indexCommitRequired ) {
-				count ++;
-			}
-			// If already at half the cluster, it is committed.
-			if ( count == requiredCount ) {
-				return true;
-			}
-		}
-		return false;
-	}
+	 *
+//	private boolean isIndexCommitted(int indexCommitRequired) {
+//		int requiredCount = 1 + (numServers / 2); // At least one more than a half.
+//		int count = 0;
+//		for ( Host h : otherServers ) {
+//			int otherIndex = matchIndex.getIndex(h.getId());
+//			
+//			// If the index is higher than the required one, increase count.
+//			if ( otherIndex >= indexCommitRequired ) {
+//				count ++;
+//			}
+//			// If already at half the cluster, it is committed.
+//			if ( count == requiredCount ) {
+//				return true;
+//			}
+//		}
+//		return false;
+//	}
+	*/
 
 	/**
 	 * Leader code on invokation of an appendEntries from another leader.
@@ -522,5 +555,63 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 	public synchronized List<LogEntry> getLog(){
 		return persistentState.getLog();
+	}
+	
+	// thread-safe runnables
+	/**
+	 * This class implements a runnable guarded with a given object, and with a given number of retries. 
+	 * @author josep
+	 */
+	public static abstract class RaftGuardedRunnable implements Runnable {
+
+		private Object guard;
+		private int retries;
+
+		/**
+		 * @param guard the guard object if any.
+		 * @param retries the number of retries to perform.
+		 */
+		public RaftGuardedRunnable(Object guard, int retries) {
+			this.guard = guard;
+			this.retries = retries;
+		}
+		
+		/*
+		 * (non-Javadoc)
+		 * @see java.lang.Runnable#run()
+		 */
+		@Override
+		public final void run() {
+			// Synchronized depending on the guard we have received
+			synchronized (guard) {
+				// If the thread can be ran (no change of states have occured in the meantime for example).
+				if ( canRun() ) {
+					// If the run has failed...
+					if ( ! doRun() ) {
+						// If still have retries...
+						if ( retries -- > 0 ) {
+							// Retry.
+							run();							
+						}
+					}
+				}
+			}
+		}
+		
+		/**
+		 * Executes the thread work.
+		 * @return true if it succeeded. False otherwise.
+		 */
+		public abstract boolean doRun();
+		
+		/**
+		 * @return true if the runnable can be run, false if it should be cancelled.
+		 */
+		public abstract boolean canRun();
+	}
+	
+	public void doInBackground ( RaftGuardedRunnable runnable ) {
+		// one call for each function that must be run in a separated thread
+	    executorQueue.execute(runnable);
 	}
 }
