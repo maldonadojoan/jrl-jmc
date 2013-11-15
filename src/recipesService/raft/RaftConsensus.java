@@ -88,11 +88,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		@Override
 		public void run() {
 			// If we are not a leader, start an election.
-			String serverId = getServerId();
 			if ( !isLeader() ) { 
 				// TODO Start election
-				System.out.println("STARTING ELECTION ON HOST " + serverId);
-				leaderElection(serverId);
+				System.out.println("STARTING ELECTION ON HOST " + getServerId());
+				leaderElection();
 			}
 		}
 	};
@@ -201,29 +200,35 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	/*
 	 *  Leader election
 	 */
-	private void leaderElection(String serverId) {
+	private void leaderElection() {
 	// Steps
 		// 1-Increment current term
 		long newTerm = this.persistentState.getCurrentTerm() +1;
 		this.persistentState.setCurrentTerm(newTerm);
+		
+		// 1 - Or this
+		// persistentState.nextTerm();
+		
 		// 2-Change to candidate state
 		this.state = RaftState.CANDIDATE;
+		
 		// 3-Vote for self
-		this.persistentState.setVotedFor(serverId);
+		this.persistentState.setVotedFor(getServerId());
+		
 		// 4-Send RequestVote RPC to all other servers
 		try {
-			this.requestVote(newTerm, serverId, this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
+			//This method should start threads in an executor. For each server, a thread retrying and trying to get its vote.
+			this.requestVote(newTerm, getServerId(), this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
 		} catch (RemoteException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		// 5. Retry until:
-			// 5.1. Receive votes from majority of servers
-			// 5.2. Receive RPC from a valid Leader
-			// 5.3. Election timeout elapses (no one wins the election)
-				// 5.3.1. Increment current term
+		// 5. Retry until:  I think that this could be done by:
+			// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
+			// 5.2. Receive RPC from a valid Leader onAppendEntry, increase term. the threads of the executor must check if the term is correct.
+			// 5.3. Election timeout elapses (no one wins the election) This should be done with the other timer and a timer task,
+									//  similar to the heartbeat one. Again, increase term.
+				// 5.3.1. Increment current term // The timer would make this actions.
 				// 5.3.2. Start a new election
-		
 	}
 
 
@@ -332,26 +337,28 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	}
 
 	/**
+	 * DELETE : persistent state can do this, just keep it until we are sure we don't need it.
 	 * @param index the index of the log which we try to know if it is committed. 
 	 * @return true if it has been committed.
-	 */
-	private boolean isIndexCommitted(int indexCommitRequired) {
-		int requiredCount = 1 + (numServers / 2); // At least one more than a half.
-		int count = 0;
-		for ( Host h : otherServers ) {
-			int otherIndex = matchIndex.getIndex(h.getId());
-			
-			// If the index is higher than the required one, increase count.
-			if ( otherIndex >= indexCommitRequired ) {
-				count ++;
-			}
-			// If already at half the cluster, it is committed.
-			if ( count == requiredCount ) {
-				return true;
-			}
-		}
-		return false;
-	}
+	 *
+//	private boolean isIndexCommitted(int indexCommitRequired) {
+//		int requiredCount = 1 + (numServers / 2); // At least one more than a half.
+//		int count = 0;
+//		for ( Host h : otherServers ) {
+//			int otherIndex = matchIndex.getIndex(h.getId());
+//			
+//			// If the index is higher than the required one, increase count.
+//			if ( otherIndex >= indexCommitRequired ) {
+//				count ++;
+//			}
+//			// If already at half the cluster, it is committed.
+//			if ( count == requiredCount ) {
+//				return true;
+//			}
+//		}
+//		return false;
+//	}
+	*/
 
 	/**
 	 * Leader code on invokation of an appendEntries from another leader.
