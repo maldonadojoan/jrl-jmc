@@ -169,7 +169,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		/*
 		 *  ACTIONS TO DO EACH TIME THE SERVER CONNECTS (i.e. when it starts or after a failure or disconnection)
 		 */
-		
+		// Server starts always as FOLLOWER
+		this.state = RaftState.FOLLOWER;
 		// Start the election timeout.
 		electionTimeoutTimer = new Timer();
 		electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
@@ -209,28 +210,32 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 */
 	private void leaderElection() {
 	// Steps
+		///////////// RESETEJAR electionTimeout?//////////////////////////////////////////////////////////////////////////
 		// 1-Increment current term
-		long newTerm = this.persistentState.getCurrentTerm() +1;
-		this.persistentState.setCurrentTerm(newTerm);
-		
-		// 1 - Or this
-		// persistentState.nextTerm();
+		persistentState.nextTerm();
 		
 		// 2-Change to candidate state
 		this.state = RaftState.CANDIDATE;
 		
 		// 3-Vote for self
 		this.persistentState.setVotedFor(getServerId());
-		
+		// Clear list of received votes
+		this.receivedVotes = new HashSet<Host>();
+		System.out.println("\nCANDIDATE HOST: " + localHost.toString()); /////////////////////////////////////////////////////////DEBUG
+		this.receivedVotes.add(localHost);
+		System.out.println("\nRECEIVED VOTES: " + Integer.toString(receivedVotes.size()) + " OTHER SERVERS: " + Integer.toString(otherServers.size())); ///////////////DEBUG
 		// 4-Send RequestVote RPC to all other servers
-		try {
-			//This method should start threads in an executor. For each server, a thread retrying and trying to get its vote.
-			this.requestVote(newTerm, getServerId(), this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
-		} catch (RemoteException e) {
-			e.printStackTrace();
-		}
 		// 5. Retry until:  I think that this could be done by:
-			// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
+		// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
+		//while (!(receivedVotes.size() > otherServers.size()/2+1)){
+			System.out.println("\nASKING FOR VOTES"); /////////////////////////////////////////////////////////DEBUG
+			try {
+				//This method should start threads in an executor. For each server, a thread retrying and trying to get its vote.
+				this.requestVote(persistentState.getCurrentTerm(), getServerId(), this.persistentState.getLastLogIndex(), this.persistentState.getLastLogTerm());
+			} catch (RemoteException e) {
+				e.printStackTrace();
+			}
+		//}
 			// 5.2. Receive RPC from a valid Leader onAppendEntry, increase term. the threads of the executor must check if the term is correct.
 			// 5.3. Election timeout elapses (no one wins the election) This should be done with the other timer and a timer task,
 									//  similar to the heartbeat one. Again, increase term.
@@ -497,15 +502,22 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			int lastLogIndex, long lastLogTerm) throws RemoteException {
 		// TODO Auto-generated method stub
 		String serverIdTmp;
-		RequestVoteResponse voteResponse;
+		RequestVoteResponse voteResponse = new RequestVoteResponse (term, false) ;
 		for( int i = 0 ; i < this.otherServers.size() ; i++ ){
 			Host hostTmp = this.otherServers.get(i);
 			serverIdTmp = hostTmp.getId();
+			System.out.println("\nELECTOR HOST: " + hostTmp.toString()); /////////////////////////////////////////////////////////DEBUG
 			try {
-				voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
+				// Send RequestVote RPC to every server
+				// SI DESCONNECTO LA 512= ERROR DEL MAIL
+				//voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
+				// If the server gives its vote, we add it to out set of votes
+				if (voteResponse.isVoteGranted()){
+					System.out.println("\nVOTE RECEIVED"); /////////////////////////////////////////////////////////DEBUG
+					this.receivedVotes.add(hostTmp);
+				}
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
-				System.out.println("DEBUG 1");
 				e.printStackTrace();
 			}
 		}
