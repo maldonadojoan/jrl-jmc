@@ -171,6 +171,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 */
 		// Server starts always as FOLLOWER
 		this.state = RaftState.FOLLOWER;
+		communication = RMIsd.getInstance();
 		// Start the election timeout.
 		electionTimeoutTimer = new Timer();
 		electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
@@ -503,19 +504,20 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// TODO Auto-generated method stub
 		String serverIdTmp;
 		RequestVoteResponse voteResponse = new RequestVoteResponse (term, false) ;
+		System.out.println("\nOTHER SERVERS SIZE: " + Integer.toString(this.otherServers.size())); /////////////////////////////////////DEBUG
 		for( int i = 0 ; i < this.otherServers.size() ; i++ ){
 			Host hostTmp = this.otherServers.get(i);
 			serverIdTmp = hostTmp.getId();
-			System.out.println("\nELECTOR HOST: " + hostTmp.toString()); /////////////////////////////////////////////////////////DEBUG
+			System.out.println("\nELECTOR HOST: " + hostTmp.toString()); ///////////////////////////////////////////////////////////////DEBUG
 			try {
 				// Send RequestVote RPC to every server
-				// SI DESCONNECTO LA 512= ERROR DEL MAIL
-				//voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
+				voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
+				System.out.println("\nVOTE RESPONSE: " + voteResponse.toString()); /////////////////////////////////////////////////////DEBUG
 				// If the server gives its vote, we add it to out set of votes
-				if (voteResponse.isVoteGranted()){
-					System.out.println("\nVOTE RECEIVED"); /////////////////////////////////////////////////////////DEBUG
+				/*if (voteResponse.isVoteGranted()){
+					System.out.println("\nVOTE RECEIVED"); /////////////////////////////////////////////////////////////////////////////DEBUG
 					this.receivedVotes.add(hostTmp);
-				}
+				}*/
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
