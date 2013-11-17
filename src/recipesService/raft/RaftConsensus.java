@@ -228,7 +228,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// 4-Send RequestVote RPC to all other servers
 		// 5. Retry until:  I think that this could be done by:
 		// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
-		//while (!(receivedVotes.size() > otherServers.size()/2+1)){
+		while (!(receivedVotes.size() > otherServers.size()/2+1)){
 			System.out.println("\nASKING FOR VOTES"); /////////////////////////////////////////////////////////DEBUG
 			try {
 				//This method should start threads in an executor. For each server, a thread retrying and trying to get its vote.
@@ -236,7 +236,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			} catch (RemoteException e) {
 				e.printStackTrace();
 			}
-		//}
+		}
 			// 5.2. Receive RPC from a valid Leader onAppendEntry, increase term. the threads of the executor must check if the term is correct.
 			// 5.3. Election timeout elapses (no one wins the election) This should be done with the other timer and a timer task,
 									//  similar to the heartbeat one. Again, increase term.
@@ -508,16 +508,16 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		for( int i = 0 ; i < this.otherServers.size() ; i++ ){
 			Host hostTmp = this.otherServers.get(i);
 			serverIdTmp = hostTmp.getId();
-			System.out.println("\nELECTOR HOST: " + hostTmp.toString()); ///////////////////////////////////////////////////////////////DEBUG
+			System.out.println("\nELECTOR HOST NUM: " + Integer.toString(i) + " HOST: " + hostTmp.toString()); ///////////////////////////////////////////////////////////////DEBUG
 			try {
 				// Send RequestVote RPC to every server
 				voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
 				System.out.println("\nVOTE RESPONSE: " + voteResponse.toString()); /////////////////////////////////////////////////////DEBUG
 				// If the server gives its vote, we add it to out set of votes
-				/*if (voteResponse.isVoteGranted()){
+				if (voteResponse.isVoteGranted()){
 					System.out.println("\nVOTE RECEIVED"); /////////////////////////////////////////////////////////////////////////////DEBUG
 					this.receivedVotes.add(hostTmp);
-				}*/
+				}
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
