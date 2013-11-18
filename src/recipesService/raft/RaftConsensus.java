@@ -521,7 +521,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		String serverIdTmp;
 		RequestVoteResponse voteResponse = new RequestVoteResponse (term, false) ;
 		System.out.println("\nOTHER SERVERS SIZE: " + Integer.toString(this.otherServers.size())); /////////////////////////////////////DEBUG
-		for( int i = 0 ; i < this.otherServers.size() ; i++ ){
+		/*for( int i = 0 ; i < this.otherServers.size() ; i++ ){
 			Host hostTmp = this.otherServers.get(i);
 			serverIdTmp = hostTmp.getId();
 			System.out.println("\nELECTOR HOST NUM: " + Integer.toString(i) + " HOST: " + hostTmp.toString()); ///////////////////////////////////////////////////////////////DEBUG
@@ -537,7 +537,30 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
-			}
+			}*/
+		final int electionTerm = 5; 
+		Object guard = null;
+		doInBackground(new RaftGuardedRunnable(guard, 5) {
+				  for( int i = 0 ; i < this.otherServers.size() ; i++ ){
+						Host hostTmp = this.otherServers.get(i);
+						serverIdTmp = hostTmp.getId();
+						System.out.println("\nELECTOR HOST NUM: " + Integer.toString(i) + " HOST: " + hostTmp.toString()); ///////////////////////////////////////////////////////////////DEBUG
+						@Override public void run() {       
+                          try{ 
+                        	// Send RequestVote RPC to every server
+              				voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
+              				System.out.println("\nVOTE RESPONSE: " + voteResponse.toString()); /////////////////////////////////////////////////////DEBUG
+              				// If the server gives its vote, we add it to out set of votes
+              				if (voteResponse.isVoteGranted()){
+              					System.out.println("\nVOTE RECEIVED"); /////////////////////////////////////////////////////////////////////////////DEBUG
+              					this.receivedVotes.add(hostTmp);
+              				}
+                           } 
+                         catch(Exception e){
+                        	 e.printStackTrace();
+                             }  
+                  }
+                  });
 		}
 		return null;
 	}
