@@ -522,10 +522,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}*/
-			  //executorQueue.execute(new RaftGuardedRunnable()) { 
 		final int electionTerm = 5; 
-/		Object guard = null;
-/		doInBackground(new RaftGuardedRunnable(guard, 5) {
+		Object guard = null;
+		doInBackground(new RaftGuardedRunnable(guard, 5) {
 				  for( int i = 0 ; i < this.otherServers.size() ; i++ ){
 						Host hostTmp = this.otherServers.get(i);
 						serverIdTmp = hostTmp.getId();
