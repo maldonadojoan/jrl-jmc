@@ -1,3 +1,7 @@
 # Ignoring bin file.
 
 bin/
+
+# Ignoring classpath
+
+.classpath
