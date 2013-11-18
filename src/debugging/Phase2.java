@@ -9,9 +9,9 @@ public class Phase2 {
 	private static boolean localTestServer = true;
 
 	/** The number of servers to create */
-	private static int serverCount = 5;
+	private static int serverCount = 2;
 	
-	private static String[] arguments = new String[] { "5" };
+	private static String[] arguments = new String[] { serverCount + "" , "-phase" , "2"};
 	
 	public static void main (String[] args) {
 		ExecutorService threadPool = Executors.newCachedThreadPool();
