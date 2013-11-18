@@ -85,18 +85,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	private long electionTimeout; // period of time that a follower receives no communication.
 	
 	/** TimerTask who notices that a leader has collapsed */
-	private final TimerTask electionTimeoutTimerTask = new TimerTask() {
-		
-		@Override
-		public void run() {
-			// If we are not a leader, start an election.
-			if ( !isLeader() ) { 
-				// TODO Start election
-				System.out.println("STARTING ELECTION ON HOST " + getServerId());
-				leaderElection();
-			}
-		}
-	};
+	private TimerTask electionTimeoutTimerTask;
 
 	private RMIsd communication; //RPC communication
 	
@@ -172,8 +161,35 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// Server starts always as FOLLOWER
 		this.state = RaftState.FOLLOWER;
 		communication = RMIsd.getInstance();
+		
+		restartElectionTimeout();
+	}
+
+	/**
+	 * (re)starts the election timeout, so if we receive a heartbeat it won't be started until
+	 * a new timeout has passed.
+	 */
+	private void restartElectionTimeout() {
+		// If already created the election timeout timers, start them.
+		if ( electionTimeoutTimer != null ) {
+			electionTimeoutTimer.cancel();
+			electionTimeoutTimerTask.cancel();
+		}
+		
+		
 		// Start the election timeout.
 		electionTimeoutTimer = new Timer();
+		electionTimeoutTimerTask = new TimerTask() {
+			
+			@Override
+			public void run() {
+				// If we are not a leader, start an election.
+				if ( !isLeader() ) { 
+					System.out.println("STARTING ELECTION ON HOST " + getServerId());
+					leaderElection();
+				}
+			}
+		};
 		electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
 	}
 

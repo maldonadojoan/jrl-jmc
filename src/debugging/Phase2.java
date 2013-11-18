@@ -11,8 +11,17 @@ public class Phase2 {
 	/** The number of servers to create */
 	private static int serverCount = 2;
 	
+	/** 
+	 * The arguments that would be used to launch start.sh. It could be done with the args of the main method, 
+	 * but it is easier to update something here rather than in run configurations.
+	 */
 	private static String[] arguments = new String[] { serverCount + "" , "-phase" , "2"};
 	
+	
+	/**
+	 * Executes the same methods than the script start.sh
+	 * @param args
+	 */
 	public static void main (String[] args) {
 		ExecutorService threadPool = Executors.newCachedThreadPool();
 		
