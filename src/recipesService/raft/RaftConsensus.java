@@ -492,9 +492,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 */
 	private void onHeartbeat() {
 		// Reset the timer to a new timeout date.
-		if ( electionTimeoutTimerTask.cancel() ) {
-			electionTimeoutTimer.schedule(electionTimeoutTimerTask, getTimeoutDate());
-		}
+		restartElectionTimeout();
 	}
 	
 	//
