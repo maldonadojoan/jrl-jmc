@@ -170,7 +170,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * a new timeout has passed.
 	 */
 	private void restartElectionTimeout() {
-		// If already created the election timeout timers, start them.
+		// If already created the election timeout timers, stop them.
 		if ( electionTimeoutTimer != null ) {
 			electionTimeoutTimer.cancel();
 			electionTimeoutTimerTask.cancel();
@@ -244,7 +244,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// 4-Send RequestVote RPC to all other servers
 		// 5. Retry until:  I think that this could be done by:
 		// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
-		while (!(receivedVotes.size() > otherServers.size()/2+1)){
+		//while (!(receivedVotes.size() > otherServers.size()/2+1)){
 			System.out.println("\nASKING FOR VOTES"); /////////////////////////////////////////////////////////DEBUG
 			try {
 				//This method should start threads in an executor. For each server, a thread retrying and trying to get its vote.
@@ -252,7 +252,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			} catch (RemoteException e) {
 				e.printStackTrace();
 			}
-		}
+		//}
 			// 5.2. Receive RPC from a valid Leader onAppendEntry, increase term. the threads of the executor must check if the term is correct.
 			// 5.3. Election timeout elapses (no one wins the election) This should be done with the other timer and a timer task,
 									//  similar to the heartbeat one. Again, increase term.
@@ -536,20 +536,24 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}*/
+		final long termTmp = term;
+		final String candidateIdTmp = candidateId;
+		final int lastLogIndexTmp = lastLogIndex;
+		final long lastLogTermTmp = lastLogTerm;
 		final int electionTerm = 5; 
-		Object guard = null;
+		Object guard = new Object();
 		doInBackground(new RaftGuardedRunnable(guard, 5) {
 				  
 						@Override public boolean doRun() {  
 							String serverIdTmp;
-							RequestVoteResponse voteResponse = new RequestVoteResponse (term, false) ;
+							RequestVoteResponse voteResponse = new RequestVoteResponse (termTmp, false) ;
 							for( int i = 0 ; i < otherServers.size() ; i++ ){
 								Host hostTmp = otherServers.get(i);
 								serverIdTmp = hostTmp.getId();
 								System.out.println("\nELECTOR HOST NUM: " + Integer.toString(i) + " HOST: " + hostTmp.toString()); /////////////////////////DEBUG
                           try{ 
                         	// Send RequestVote RPC to every server
-              				voteResponse = communication.requestVote(serverIdTmp, term, candidateId, lastLogIndex, lastLogTerm);
+              				voteResponse = communication.requestVote(serverIdTmp, termTmp, candidateIdTmp, lastLogIndexTmp, lastLogTermTmp);
               				System.out.println("\nVOTE RESPONSE: " + voteResponse.toString()); /////////////////////////////////////////////////////DEBUG
               				// If the server gives its vote, we add it to out set of votes
               				if (voteResponse.isVoteGranted()){
@@ -561,6 +565,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
                         	 e.printStackTrace();
                              }  
 							}
+							return voteResponse.isVoteGranted();
                   }
                   
 		
