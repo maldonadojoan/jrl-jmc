@@ -554,12 +554,12 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 					try{ 
 						// Send RequestVote RPC to every server
 						voteResponse = communication.requestVote(serverIdTmp, termTmp, candidateIdTmp, lastLogIndexTmp, lastLogTermTmp);
-						System.out.println("\nVOTE RESPONSE: " + voteResponse.toString()); /////////////////////////////////////////////////////DEBUG
+						//System.out.println("\nVOTE RESPONSE: " + voteResponse.toString()); /////////////////////////////////////////////////////DEBUG
 						// If the server gives its vote, we add it to out set of votes
-						if (voteResponse.isVoteGranted()){
+						/*if (voteResponse.isVoteGranted()){
 							System.out.println("\nVOTE RECEIVED"); /////////////////////////////////////////////////////////////////////////////DEBUG
 							receivedVotes.add(hostTmp);
-						}
+						}*/
 					} 
 					catch(Exception e){
 						e.printStackTrace();
@@ -659,7 +659,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 * Performs the synchronizedRun.
 		 */
 		private void synchronizedRun() {
-			// If the thread can be ran (no change of states have occured in the meantime for example).
+			// If the thread can be ran (no change of states have occurred in the meantime for example).
 			if ( canRun() ) {
 				// If the run has failed...
 				boolean success = false;
