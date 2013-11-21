@@ -81,7 +81,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	/** TimerTask who notices that a leader has collapsed */
 	private TimerTask electionTimeoutTimerTask;
 
-	private RMIsd communication; //RPC communication
+	private RMIsd communication = RMIsd.getInstance(); //RPC communication
 
 	// If a timeout occurs, it assumes there is no viable leader.
 	private Set<Host> receivedVotes; // contains hosts that have voted for this server as candidate in a leader election
@@ -153,11 +153,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 *  ACTIONS TO DO EACH TIME THE SERVER CONNECTS (i.e. when it starts or after a failure or disconnection)
 		 */
 		// Server starts always as FOLLOWER
-		
-		System.out.println("JAVA VERSION RUNNING THE APP: " + System.getProperty("java.version"));
 		this.state = RaftState.FOLLOWER;
-		communication = RMIsd.getInstance();
-
 		restartElectionTimeout();
 	}
 
@@ -224,7 +220,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	private void leaderElection() {
 		// Steps
 		///////////// RESETEJAR electionTimeout?//////////////////////////////////////////////////////////////////////////
-		
+		System.out.println("\nCANDIDATE HOST: " + localHost.toString()); /////////////////////////////////////////////////////////DEBUG		
 		// TODO This should be guarded.
 		
 		// 1-Increment current term
@@ -240,7 +236,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// 3-Vote for self
 		this.persistentState.setVotedFor(getServerId());
 		this.receivedVotes.add(localHost);
-		System.out.println("\nCANDIDATE HOST: " + localHost.toString()); /////////////////////////////////////////////////////////DEBUG
 
 		// 4-Send RequestVote RPC to all other servers
 		// 5. Retry until:  I think that this could be done by:
@@ -255,7 +250,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		for( Host host : otherServers ){
 			final Host h = host;
 			// For each host, do in background a runnable trying to get its vote.
-			doInBackground(new RaftGuardedRunnable(guard, 2) {
+			doInBackground(new RaftGuardedRunnable(guard, 0) { // TODO Increase retries
 
 				@Override
 				public boolean doRun() {
@@ -526,7 +521,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 	@Override
 	public RequestVoteResponse requestVote(final long term, final String candidateId, final int lastLogIndex, final long lastLogTerm) throws RemoteException {
-		// TODOO This method is called from another server when they ask for our vote, we were using it as a way to request votes to other servers!
+		// TODO This method is called from another server when they ask for our vote, we were using it as a way to request votes to other servers!
 		return null;
 	}
 
@@ -678,6 +673,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		public abstract boolean canRun();
 	}
 
+	/**
+	 * Executes a raft guarded runnable in the background.
+	 * @param runnable
+	 */
 	public void doInBackground ( RaftGuardedRunnable runnable ) {
 		// one call for each function that must be run in a separated thread
 		executorQueue.execute(runnable);
