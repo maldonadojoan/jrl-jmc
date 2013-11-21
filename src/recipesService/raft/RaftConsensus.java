@@ -366,25 +366,27 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @throws RemoteException
 	 */
 	private RequestResponse leaderRequest(Operation operation) {
-		// Step 1 -> store to my own log.
+		log("LeaderRequest step 1: Store to my own log.");
 		persistentState.addEntry(operation);
 
-		// The last index is the one we will need to get
 		int indexCommitRequired = persistentState.getLastLogIndex();
+		log("The last index is the one we will need to get: " + indexCommitRequired);
 
-		// Step 2 -> Start sending append entries to the rest of the cluster. There is already
-		// A thread doing this, so we just have to wait for the thread to get to the current operation and break.
+		log("LeaderRequest Step 2 : Start sending append entries to the rest of the cluster.\n\tThere is already " +
+				"A thread doing this, so we just have to wait for the thread to get to the current operation and break.");
 		// We have to be careful for:
 		// * State changes (if we become a leader we won't commit any more data).
 		// * ??
 		do {
-			if (state == RaftState.LEADER) {
-				// If we have changed of state unsuccessful request.
-				return new RequestResponse(getServerId(), false);		
-			}
+//			TODO Activate this when leader election works properly
+//			if (state != RaftState.LEADER) {
+//				// If we have changed of state unsuccessful request.
+//				return new RequestResponse(getServerId(), false);
+//			}
 
 			// Commit index MUST be updated when persisted at threads.
 			if ( indexCommitRequired >= commitIndex ) {
+				log ("The entry " + indexCommitRequired + " has been committed");
 				break;
 			}
 
@@ -399,6 +401,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			}
 		} while (true);
 
+		log("Successfully appended to log.");
 		// If we have reached this point, the entry has been committed.
 		return new RequestResponse(getServerId(), true);
 	}
@@ -569,12 +572,14 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	@Override
 	public RequestResponse Request(Operation operation) throws RemoteException {
 		// If follower and candidate, redirect him to the last leader known, so it will retry.
+		log("Received request from client");
 		switch ( state ) {
 		default:
 		case FOLLOWER: 
 		case CANDIDATE: // TODO WHERE SHOULD CANDIDATE REDIRECT?
 			return new RequestResponse(leader, false);
 		case LEADER:
+			log("Leader performs the request");
 			return leaderRequest(operation);
 		}
 	}
@@ -640,17 +645,12 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				if ( !success ) {
 					// If still have retries...
 					if ( retries -- > 0 ) {
-						RaftConsensus.this.log("Retrying RaftGuardedRunnable.");
 						// Retry.
 						scheduleRetry();
 					} else {
-						RaftConsensus.this.log("RaftGuardedRunnable has expired its retries.");
+						RaftConsensus.this.log("Runnable has expired its retries.");
 					}
-				} else {
-					RaftConsensus.this.log("RaftGuardedRunnable ran successfully.");
 				}
-			} else {
-				RaftConsensus.this.log("Can't run RaftGuardedRunnable.");
 			}
 		}
 
