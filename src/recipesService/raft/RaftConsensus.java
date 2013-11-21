@@ -21,6 +21,7 @@ package recipesService.raft;
 
 
 import java.rmi.RemoteException;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -53,6 +54,8 @@ import communication.rmi.RMIsd;
  */
 
 public abstract class RaftConsensus extends CookingRecipes implements Raft{
+
+	private static final SimpleDateFormat SIMPLE_DATE_FORMAT = new SimpleDateFormat("HH:MM:ss.SSS");
 
 	// current server
 	private Host localHost;
@@ -153,6 +156,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 *  ACTIONS TO DO EACH TIME THE SERVER CONNECTS (i.e. when it starts or after a failure or disconnection)
 		 */
 		// Server starts always as FOLLOWER
+		log("Connected");
 		this.state = RaftState.FOLLOWER;
 		restartElectionTimeout();
 	}
@@ -177,7 +181,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			public void run() {
 				// If we are not a leader, start an election.
 				if ( !isLeader() ) { 
-					System.out.println("STARTING ELECTION ON HOST " + getServerId());
+					log("STARTING ELECTION ON HOST " + getServerId());
 					leaderElection();
 				}
 			}
@@ -196,6 +200,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	}
 
 	public void disconnect(){
+		log("Disconnected");
 		electionTimeoutTimer.cancel();
 		if (isLeader()){
 			leaderHeartbeatTimeoutTimer.cancel();
@@ -220,7 +225,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	private void leaderElection() {
 		// Steps
 		///////////// RESETEJAR electionTimeout?//////////////////////////////////////////////////////////////////////////
-		System.out.println("\nCANDIDATE HOST: " + localHost.toString()); /////////////////////////////////////////////////////////DEBUG		
+		log("CANDIDATE HOST: " + localHost.toString()); /////////////////////////////////////////////////////////DEBUG		
 		// TODO This should be guarded.
 		
 		// 1-Increment current term
@@ -241,7 +246,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// 5. Retry until:  I think that this could be done by:
 		// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
 		//while (!(receivedVotes.size() > otherServers.size()/2+1)){
-		System.out.println("\nASKING FOR VOTES"); /////////////////////////////////////////////////////////DEBUG
+		log("ASKING FOR VOTES"); /////////////////////////////////////////////////////////DEBUG
 		
 		final long electionTerm = persistentState.getCurrentTerm(); // XXX Joan, this had to be the current election term. Previous value was 5 hardcoded.
 		Object guard = new Object();
@@ -255,7 +260,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				@Override
 				public boolean doRun() {
 					try {
-						System.out.println("Requesting vote of server " + h.getId());
+						log("Requesting vote of server " + h.getId());
 						RequestVoteResponse voteResponse = communication.requestVote(h.getId(), term, getServerId(), 
 								persistentState.getLastLogIndex(),persistentState.getLastLogTerm());
 
@@ -267,7 +272,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 						
 						// If the vote is granted
 						if (voteResponse.isVoteGranted()){
-							System.out.println("VOTE RECEIVED"); //DEBUG
+							log("VOTE RECEIVED"); //DEBUG
 							
 							// Add to receivedVotes.
 							receivedVotes.add(h);
@@ -537,7 +542,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 */
 	protected void onReceivedVote() {
 		// TODO Auto-generated method stub
-		System.out.println("ON RECEIVED VOTE CHECK MAJORITY AND BECOME LEADER IF REQUIRED");
+		log("ON RECEIVED VOTE CHECK MAJORITY AND BECOME LEADER IF REQUIRED");
 	}
 
 	/*
@@ -586,16 +591,17 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	}
 
 	// thread-safe runnables
+	
+	private final static Timer retryRunnableTimer = new Timer();
+	
 	/**
 	 * This class implements a runnable guarded with a given object, and with a given number of retries. 
 	 * @author josep
 	 */
-	public static abstract class RaftGuardedRunnable implements Runnable {
+	public abstract class RaftGuardedRunnable implements Runnable {
 
 		private Object guard;
 		private int retries;
-		private static final Timer retryTimer = new Timer();
-		
 		
 		/**
 		 * @param guard the guard object if any.
@@ -634,17 +640,17 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				if ( !success ) {
 					// If still have retries...
 					if ( retries -- > 0 ) {
-						System.out.println("Retrying RaftGuardedRunnable.");
+						RaftConsensus.this.log("Retrying RaftGuardedRunnable.");
 						// Retry.
 						scheduleRetry();
 					} else {
-						System.out.println("RaftGuardedRunnable has expired its retries.");
+						RaftConsensus.this.log("RaftGuardedRunnable has expired its retries.");
 					}
 				} else {
-					System.out.println("RaftGuardedRunnable ran successfully.");
+					RaftConsensus.this.log("RaftGuardedRunnable ran successfully.");
 				}
 			} else {
-				System.out.println("Can't run RaftGuardedRunnable.");
+				RaftConsensus.this.log("Can't run RaftGuardedRunnable.");
 			}
 		}
 
@@ -652,7 +658,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		 * Reschedules a runnable to be performed after a given period.
 		 */
 		private void scheduleRetry() {
-			retryTimer.schedule(new TimerTask() {
+			retryRunnableTimer.schedule(new TimerTask() {
 				
 				@Override
 				public void run() {
@@ -688,4 +694,14 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// one call for each function that must be run in a separated thread
 		executorQueue.execute(runnable);
 	}
+	
+	/**
+	 * Logs a message using Sysout, adding info.
+	 * @param msg
+	 */
+	public void log(String msg){
+		System.err.println(getServerId() + " @ " + SIMPLE_DATE_FORMAT.format(new Date()) + " : " + msg);
+	}
+	
+	
 }
