@@ -77,7 +77,7 @@ public class RMIsd {
 			//  Naming.rebind("rmi://localhost:1099/ServicioX", c);
 			//		registry.bind("Raft"+localhost.getPort(), stub);
 			
-			
+			System.out.println("\n\n\nBINDING SERVER " + serverData.getServerId() + "\n\n");
 			registry.bind(
 					"rmi://"
 							+ registryHost
@@ -223,6 +223,7 @@ public class RMIsd {
 		} catch (RemoteException | NotBoundException e) {
 			// TODO Auto-generated catch block
 			//						e.printStackTrace();
+			System.out.println("Exception " + e.getClass() + " -> " + e.getMessage());
 			throw new DSException("Destination host not reachable: a network error has occured or the testing environment simulates that the destination host is failed");
 		}
 	}

@@ -15,7 +15,7 @@ public class Phase2 {
 	 * The arguments that would be used to launch start.sh. It could be done with the args of the main method, 
 	 * but it is easier to update something here rather than in run configurations.
 	 */
-	private static String[] arguments = new String[] { serverCount + "" , "-phase" , "2"};
+	private static String[] arguments = new String[] { serverCount + "" , "-phase" , "3"};
 	
 	
 	/**
@@ -24,7 +24,7 @@ public class Phase2 {
 	 */
 	public static void main (String[] args) {
 		ExecutorService threadPool = Executors.newCachedThreadPool();
-		
+
 		if ( localTestServer ) {
 			threadPool.execute(new Runnable() {
 				@Override
@@ -51,10 +51,12 @@ public class Phase2 {
 		}
 
 		for ( int i = 0 ; i < serverCount ; i++ ) {
+			final int serverId = i;
 			threadPool.execute(new Runnable() {
 
 				@Override
 				public void run() {
+					System.out.println("Launching server " + serverId);
 					recipesService.Server.main(arguments);
 				}
 			});
