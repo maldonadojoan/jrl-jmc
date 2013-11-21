@@ -258,6 +258,13 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 						System.out.println("Requesting vote of server " + h.getId());
 						RequestVoteResponse voteResponse = communication.requestVote(h.getId(), term, getServerId(), 
 								persistentState.getLastLogIndex(),persistentState.getLastLogTerm());
+
+						// Controlling null pointer exception
+						if ( voteResponse == null ) {
+							// Do not retry.
+							return true;
+						}
+						
 						// If the vote is granted
 						if (voteResponse.isVoteGranted()){
 							System.out.println("VOTE RECEIVED"); //DEBUG
@@ -522,7 +529,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	@Override
 	public RequestVoteResponse requestVote(final long term, final String candidateId, final int lastLogIndex, final long lastLogTerm) throws RemoteException {
 		// TODO This method is called from another server when they ask for our vote, we were using it as a way to request votes to other servers!
-		return null;
+		return new RequestVoteResponse(persistentState.getCurrentTerm(), true);
 	}
 
 	/**
