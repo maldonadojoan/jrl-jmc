@@ -32,8 +32,6 @@ import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.sun.org.glassfish.external.statistics.annotations.Reset;
-
 import recipesService.CookingRecipes;
 import recipesService.communication.Host;
 import recipesService.data.Operation;
@@ -43,6 +41,7 @@ import recipesService.raft.dataStructures.PersistentState;
 import recipesService.raftRPC.AppendEntriesResponse;
 import recipesService.raftRPC.RequestVoteResponse;
 import recipesService.test.client.RequestResponse;
+
 import communication.rmi.RMIsd;
 
 /**
@@ -117,6 +116,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 	private ExecutorService executorQueue;
 
+	/** Holds the last time we received a heartbeat */
+	private long lastHeartbeatTime;
+
 	//
 	// UTILS
 	//
@@ -167,6 +169,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * a new timeout has passed.
 	 */
 	private void restartElectionTimeout() {
+		log ( "Restarting election timeout" );
 		// If already created the election timeout timers, stop them.
 		if ( electionTimeoutTimer != null ) {
 			electionTimeoutTimer.cancel();
@@ -181,7 +184,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			@Override
 			public void run() {
 				// If we are not a leader, start an election.
-				if ( !isLeader() ) {
+				if ( !isLeader() && System.currentTimeMillis() - lastHeartbeatTime > electionTimeout) {
 					log("STARTING ELECTION ON HOST " + getServerId());
 					startElection();
 				}
@@ -210,18 +213,11 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			public void run() {
 				// If we are the leader, start sending heartbeats
 				if (isLeader() ) {
-					log("Sending heartbeats to followers.");
 					sendHeartBeat();
 				}
 			}
 		};
-		log ("Scheduling the leaderHeartbeatTimer to work every " + leaderHeartbeatTimeout + " ms.");
-		leaderHeartbeatTimeoutTimer.schedule(leaderHeartbeatTimeoutTimerTask, 0, leaderHeartbeatTimeout); 
-		// TODO OJO, aquest timeout és l'utilitzat per a marcar el leader com a caigut.
-		// Si utliitzem el mateix ens crearan eleccions tot el temps. Has de utilitzar-ne un altre de molt més petit que crec que esta a un parametre.
-		
-		// T'he posat jo el leaderHeartbeatTimeout que és el que s'hauria d'utilitzar. També el 0 devant per a que ho faixi cada cert temps enlloc de fer-ho sols un cop.
-		
+		leaderHeartbeatTimeoutTimer.schedule(leaderHeartbeatTimeoutTimerTask, 0, leaderHeartbeatTimeout);
 	}
 
 	/**
@@ -231,11 +227,13 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 */
 	private Date getTimeoutDate() {
 		long delay = (long) (rnd.nextFloat() * electionTimeout) * 2;
-		log("Election delay: " + delay);
 		return new Date(System.currentTimeMillis() + delay); 
 		// random float between 0 and 1 * timeout + timeout means a value between [electionTimeout , electionTimeout * 2].
 	}
 
+	/**
+	 * Called on a disconnection of the server.
+	 */
 	public void disconnect(){
 		log("Disconnected");
 		electionTimeoutTimer.cancel();
@@ -261,11 +259,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 */
 	private void startElection() {
 		// Steps
-		///////////// RESETEJAR electionTimeout?//////////////////////////////////////////////////////////////////////////
-		// Restart the election timeout.
 		final long term;
-		System.out.println("Start election guarded interval.");
+		log("Start election guarded interval.");
 		synchronized (guard) {
+			// Restart the election timeout.
 			restartElectionTimeout();
 
 			// 1-Increment current term
@@ -282,18 +279,13 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			this.persistentState.setVotedFor(getServerId());
 			this.receivedVotes.add(localHost);
 
-			// 4-Send RequestVote RPC to all other servers
-			// 5. Retry until:  I think that this could be done by:
-			// 5.1. Receive votes from majority of servers Everytime a thread of the executor obtains a vote, try to see if majority is obtained.
-			//while (!(receivedVotes.size() > otherServers.size()/2+1)){
 		}
-		final long electionTerm = persistentState.getCurrentTerm(); // XXX Joan, this had to be the current election term. Previous value was 5 hardcoded.
 
 		// Instead of a for loop inside the runnable, create n runnables.
 		for( Host host : otherServers ){
 			final Host h = host;
 			// For each host, do in background a runnable trying to get its vote.
-			doInBackground(new RaftGuardedRunnable(guard, 0) { // TODO Increase retries
+			doInBackground( new RaftGuardedRunnable (guard, 3) {
 
 				@Override
 				public boolean doRun() {
@@ -304,21 +296,18 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 						// Controlling null pointer exception
 						if ( voteResponse == null ) {
+							log("NULL VOTE RESPONSE FROM " + h);
 							// Do not retry.
 							return true;
 						}
 
 						// If the vote is granted
 						if (voteResponse.isVoteGranted()){
-							log("VOTE GRANTED FROM " + h.getId());
-
 							// Add to receivedVotes.
 							receivedVotes.add(h);
 
 							// Notify the RaftConsensus algorithm that the server has received a vote.
 							onReceivedVote();
-						} else {
-							log("VOTE NOT GRANTED FROM " + h.getId());
 						}
 					} catch (Exception e){
 						// If an exception is to occur (no response from server or communication exception), return false to retry the runnable.
@@ -332,37 +321,42 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				@Override
 				public boolean canRun() {
 					// the runnable can be ran while the persistent state keeps the term that we are trying to lead.
-					return electionTerm == persistentState.getCurrentTerm();
+					return term == persistentState.getCurrentTerm();
 				}
 			});
 		}
 	}
 
+	/**
+	 * Sends heartbeats to all the hosts.
+	 */
 	private void sendHeartBeat() {
-		this.leader=this.localHost.getId();
+		log ( "Sending heartbeats" );
 		final long electionTerm = persistentState.getCurrentTerm();
 		for (Host host : otherServers) {
 			// For each host, do in background a runnable trying to send AppendEntries to inform of its new leadership
 			final Host h = host;
-			doInBackground(new RaftGuardedRunnable(guard, 0) { // TODO Increase retries
+			doInBackground(new RaftGuardedRunnable(guard, 3) {
 				@Override
 				public boolean doRun() {
 					try {
-						log("Sending AppendEntries heartbeat to host: " + h.toString());
 						AppendEntriesResponse appendResponse = communication.appendEntries(h.getId(),persistentState.getCurrentTerm(), leader,
-								persistentState.getLastLogIndex(),persistentState.getLastLogTerm(), null, commitIndex);
-						
-						// TODO No hauria de ser term - 1, sino que hauriem d'enviarli el term del darrer commit del persistent state. 
+								persistentState.getLastLogIndex(),persistentState.getLastLogTerm(), 
+								null, commitIndex); // TODO Use data instead of null.
 						
 						// Controlling null pointer exception
 						if ( appendResponse == null ) {
-							// Do not retry.
+							// Do not retry, the other host has returned null, but the communication hasn't failed. This should never happen.
+							log("RECEIVED NULL APPEND RESPONSE FROM HOST " + h + ". THIS SHOULD NEVER HAPPEN.");
 							return true;
 						}
 						
 						// If AppendEntries succeeded
-						if (appendResponse.isSucceeded()){
-							log("SERVER RECEIVED HEARTBEAT AND ACCEPTED LEADERSHIP"); //DEBUG
+						if ( ! appendResponse.isSucceeded() ) {
+							// If the other server has a higher term, we are out of date.
+							if ( persistentState.getCurrentTerm() < appendResponse.getTerm() ) {
+								changeState(RaftState.FOLLOWER);
+							}
 						}
 					} catch (Exception e) {
 						// If an exception is to occur (no response from server or communication exception), return false to retry the runnable.
@@ -375,8 +369,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 				@Override
 				public boolean canRun() {
-					// the runnable can be ran while the persistent state keeps the term that we are starting to lead???????????????????????????
-					return electionTerm == persistentState.getCurrentTerm();
+					// the runnable can be ran if the term hasn't changed and localhost is leader
+					return electionTerm == persistentState.getCurrentTerm() && getServerId().equals(leader);
 				}
 			});
 		}
@@ -424,6 +418,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		if ( prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() ) {
 
 			// Store it to log.
+			if ( entries == null ) {
+				return new AppendEntriesResponse(term, true);
+			}
+			
 			for ( LogEntry entry : entries ) {
 				persistentState.appendEntry(entry);
 			}
@@ -456,9 +454,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 		log("LeaderRequest Step 2 : Start sending append entries to the rest of the cluster.\n\tThere is already " +
 				"A thread doing this, so we just have to wait for the thread to get to the current operation and break.");
-		// We have to be careful for:
-		// * State changes (if we become a leader we won't commit any more data).
-		// * ??
 		do {
 //			TODO Activate this when leader election works properly
 //			if (state != RaftState.LEADER) {
@@ -477,7 +472,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			//				break;
 			//			}
 			try {
-				Thread.sleep(50);
+				Thread.sleep(10); // Wait to avoid excessive cpu usage.
 			} catch ( Exception e ) {
 				// nop, if we have been interrupted to stop this thread because of a state change, we will be stopped on the first if.
 			}
@@ -597,6 +592,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	private void onHeartbeat() {
 		// Reset the timer to a new timeout date.
 		restartElectionTimeout();
+		lastHeartbeatTime = System.currentTimeMillis();
 	}
 
 	//
@@ -608,18 +604,37 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @param state
 	 */
 	private void changeState(RaftState state) {
-		// XXX JOSEP Auto-generated method stub
-
+		// TODO TODO TODO JOSEP Auto-generated method stub
+		switch (state) {
+		case FOLLOWER:
+			log("I've become a FOLLOWER");
+			break;
+		case LEADER:
+			log("I've become a LEADER");
+			nextIndex = new Index(otherServers, (commitIndex >= 0) ? commitIndex : 0);
+			matchIndex = new Index(otherServers, (commitIndex >= 0) ? commitIndex : 0);
+			leader = localHost.getId();
+			restartHeartBeatTimeout();
+			break;
+		case CANDIDATE:
+			log("I've become a CANDIDATE");
+			
+			break;
+		}
 	}
 
 	//
 	// API
 	//
 
+	/**
+	 * The request vote process to respond another server..
+	 */
 	@Override
 	public RequestVoteResponse requestVote(final long term, final String candidateId, final int lastLogIndex, final long lastLogTerm) throws RemoteException {
-		// TODO Should also check for term and log index.
-		return new RequestVoteResponse ( persistentState.getLastLogTerm(), grantVote(term, candidateId, lastLogIndex, lastLogTerm));
+		long currentTerm = persistentState.getCurrentTerm();
+		// Return the maximum between our term and the server's one (as we will update ourselves if needed).
+		return new RequestVoteResponse ( ( currentTerm < term ) ? term : currentTerm , grantVote(term, candidateId, lastLogIndex, lastLogTerm));
 	}
 
 	/**
@@ -631,15 +646,34 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @return
 	 */
 	private boolean grantVote(long term, String candidateId, int lastLogIndex, long lastLogTerm) {
-		log("Grant vote guarded section");
 		synchronized ( guard ) {
-			if (persistentState.getVotedFor() == null){
-				restartElectionTimeout(); // Give some time to leader to impose over the rest of the cluster.
-				return true;
+			// If higher term, update our own. This will clean the voted for object.
+			if ( term > persistentState.getCurrentTerm() ) {
+				persistentState.setCurrentTerm(term);
 			}
-			else {
+	
+			// If we have already voted in this term, don't grant the vote.
+			if ( persistentState.getVotedFor() != null ) {
+				log ( "Not granting vote because i've already voted to " + persistentState.getVotedFor());
 				return false;
 			}
+			
+			// If we have a higher term log entry, don't give him our vote.
+			if ( lastLogTerm < persistentState.getLastLogTerm() ) {
+				log ( "Not granting vote because i'm at a newer term " + persistentState.getLastLogTerm() + " > " + lastLogTerm);
+				return false;
+			}
+			
+			// If we are in the same term but we have a newer log index, don't give the vote.
+			if ( lastLogTerm == persistentState.getLastLogTerm() && lastLogIndex < persistentState.getLastLogIndex() ) {
+				log ( "Not granting vote because i'm at a newer term " + persistentState.getLastLogIndex() + " > " + lastLogIndex);
+				return false;
+			}
+			
+			// If we are here we can grant him the vote.
+			restartElectionTimeout(); // Also, give some time to the leader to impose himself over the rest of the cluster.
+			log("Granting my vote to " + candidateId);
+			return true;
 		}
 	}
 
@@ -649,10 +683,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	protected void onReceivedVote() {
 		log("receivedvotes " + Integer.toString(receivedVotes.size()) + " required set size:" + Integer.toString((numServers + 1)/2) );
 		if ( receivedVotes.size() >= (numServers + 1) / 2 ) {
-			log("CANDIDATE " + localHost.toString() + "  WAS VOTED BY A MAJORITY OF SERVERS OF THE CLUSTER AND IS THE NEW LEADER.");
-			// BECOME LEADER
-			leader = localHost.getId();
-			restartHeartBeatTimeout();
+			changeState(RaftState.LEADER);
 		}
 		else {
 			log("CANDIDATE WAS NOT VOTED BY A MAJORITY OF SERVERS OF THE CLUSTER. THIS SERVER WILL REMAIN AS A CANDIDATE");
@@ -735,7 +766,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		@Override
 		public final void run() {
 			// Synchronized depending on the guard we have received
-			log ( "Running runnable guarded.");
 			synchronized (guard) {
 				synchronizedRun();
 			}
@@ -812,7 +842,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @param msg
 	 */
 	public void log(String msg){
-		System.err.println(getServerId() + " @ " + SIMPLE_DATE_FORMAT.format(new Date()) + " : " + msg);
+		System.err.println(getServerId() + " @ " + SIMPLE_DATE_FORMAT.format(new Date()) + " @term " + persistentState.getCurrentTerm() + " : " + msg);
 	}
 	
 	
