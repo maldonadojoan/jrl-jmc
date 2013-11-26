@@ -41,7 +41,6 @@ import recipesService.raft.dataStructures.PersistentState;
 import recipesService.raftRPC.AppendEntriesResponse;
 import recipesService.raftRPC.RequestVoteResponse;
 import recipesService.test.client.RequestResponse;
-
 import communication.rmi.RMIsd;
 
 /**
@@ -305,6 +304,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				@Override
 				public boolean doRun() {
 					try {
+						if (!isLeader()){
 						log("Requesting vote of server " + h.getId(), INFO);
 						RequestVoteResponse voteResponse = communication.requestVote(h.getId(), term, getServerId(), 
 								persistentState.getLastLogIndex(),persistentState.getLastLogTerm());
@@ -323,6 +323,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 							// Notify the RaftConsensus algorithm that the server has received a vote.
 							onReceivedVote();
+						}
 						}
 					} catch (Exception e){
 						// If an exception is to occur (no response from server or communication exception), return false to retry the runnable.
@@ -626,7 +627,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			log("I've become a FOLLOWER", WARN);
 			break;
 		case LEADER:
-			log("I've become a LEADER", WARN);
+			log("I've become the LEADER", WARN);
 			nextIndex = new Index(otherServers, (commitIndex >= 0) ? commitIndex : 0);
 			matchIndex = new Index(otherServers, (commitIndex >= 0) ? commitIndex : 0);
 			leader = localHost.getId();
@@ -688,6 +689,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			}
 			
 			// If we are here we can grant him the vote.
+			persistentState.setVotedFor(candidateId);
 			restartElectionTimeout(); // Also, give some time to the leader to impose himself over the rest of the cluster.
 			log("Granting my vote to " + candidateId, WARN);
 			return true;
@@ -701,6 +703,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		log("receivedvotes " + Integer.toString(receivedVotes.size()) + " required set size:" + Integer.toString(((numServers)/2)+1) , INFO);
 		if ( receivedVotes.size() >= (numServers / 2) + 1 ) {
 			changeState(RaftState.LEADER);
+			sendHeartBeat();
 		}
 		else {
 			log("CANDIDATE WAS NOT VOTED BY A MAJORITY OF SERVERS OF THE CLUSTER. THIS SERVER WILL REMAIN AS A CANDIDATE", DEBUG);
