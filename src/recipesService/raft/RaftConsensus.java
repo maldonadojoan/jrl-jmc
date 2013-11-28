@@ -961,7 +961,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @param msg
 	 */
 	public void log(String msg, int severity){
-		if ( severity >= DEBUG_LEVEL ) {
+		if ( severity >= DEBUG_LEVEL ) { 
 			System.err.println(getServerId() + " @ " + SIMPLE_DATE_FORMAT.format(new Date()) + " @term " + persistentState.getCurrentTerm() + " : " + msg);
 		}
 	}
