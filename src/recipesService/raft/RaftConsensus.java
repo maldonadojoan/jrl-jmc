@@ -239,7 +239,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 					return;
 				}
 				
-				log("STARTING ELECTION ON HOST " + getServerId(), WARN);
 				startElection();
 			}
 		};
@@ -316,15 +315,21 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		synchronized (guard) {
 			// Restart the election timeout.
 			restartElectionTimeout();
-
+			// 2-Change to candidate state
+			if (state == RaftState.CANDIDATE) {
+				log(">>>>>>>> The election ended without choosing a leader, therefore, it will be restarted <<<<<<<<<< ", WARN);
+			}
+			else{
+				changeState(RaftState.CANDIDATE);
+				setLeader(null);
+			}
+			log("STARTING ELECTION ON HOST " + getServerId(), WARN);
 			// 1-Increment current term
 			persistentState.nextTerm();
 			term = persistentState.getCurrentTerm();
 			log ( "Incrementing my term to " + term, WARN);
 
-			// 2-Change to candidate state
-			changeState(RaftState.CANDIDATE);
-			setLeader(null);
+			
 			// Clear list of received votes
 			this.receivedVotes = new HashSet<Host>();
 
