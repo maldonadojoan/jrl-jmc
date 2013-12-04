@@ -447,8 +447,19 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 								nextIndex.setIndex(h.getId(), lastIndex);
 							}
 						} else {
-							log ( "<<<<<<<<<<< AppendEntries accepted from host " + h , INFO);
-							nextIndex.decrease(h.getId());
+							// If the other server has a higher term, we are out of date.
+							if ( persistentState.getCurrentTerm() < appendResponse.getTerm() ) {
+								log ( "Host " + h + " had a higher term: " + appendResponse.getTerm() , WARN);
+								// I've no leader
+								synchronized ( guard ) {
+									setLeader(null);
+									persistentState.setCurrentTerm(appendResponse.getTerm());
+									changeState(RaftState.FOLLOWER);									
+								}
+							} else {
+								log ( "<<<<<<<<<<< AppendEntries accepted from host " + h + " decreasing its index" , INFO);
+								nextIndex.decrease(h.getId());								
+							}
 						}
 					} catch (Exception e) {
 						// If an exception is to occur (no response from server or communication exception), return false to retry the runnable.
@@ -490,8 +501,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * @throws RemoteException
 	 */
 	private AppendEntriesResponse followerAppendEntries(long term, String leaderId,
-			int prevLogIndex, long prevLogTerm, List<LogEntry> entries,
-			int leaderCommit) {
+			int prevLogIndex, long prevLogTerm, 
+			List<LogEntry> entries, int leaderCommit) {
+		
 		// Same term, with different leader update it.
 		if ( term == persistentState.getCurrentTerm() ) {
 			log("Received append entries for my term. Updating leader if needed",DEBUG);
@@ -499,6 +511,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 				setLeader(leaderId);
 			}
 		}
+		
 		// If stale leader, notify him
 		if ( term < persistentState.getCurrentTerm() ) {
 			log("Received append entry with older term.", ERROR);
@@ -521,19 +534,22 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			log ( "Updating my term to " + term, WARN);
 		}
 
-		// Here on, always current term. Try to append to log.
-		// If correct log and term index...
-		if ( prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() ) {
-
+		// Last log term is -1 when empty list.
+		if ( ( persistentState.getLastLogTerm() == -1 ) || 
+				// Check correct term and index.
+				(prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm()) ) {
 			// Store it to log.
 			if ( entries == null ) {
+				log(">>>>>>>>>>>>>>>>>>>>>>>>> Null entries received!" , ERROR);
 				return new AppendEntriesResponse(term, true);
 			}
 
+			log("Appending entries and launching runnable to commit data.", DEBUG);
 			for ( LogEntry entry : entries ) {
+				log("Appending new entry to my persistentState : " + entry, WARN);
 				persistentState.appendEntry(entry);
 			}
-
+			
 			RaftGuardedRunnable runnable = new RaftGuardedRunnable(recipes, 10) {
 				
 				@Override
@@ -566,6 +582,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// If not correct, notify the leader that we need a previous log first.
 		else {
 			log("prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() is false because:" , ERROR);
+			log("prevLogIndex = " + prevLogIndex, ERROR);
 			log("persistentState.getLastLogIndex() = " + persistentState.getLastLogIndex(), ERROR);
 			log("prevLogTerm = " + prevLogTerm, ERROR);
 			log("persistentState.getLastLogTerm() = " + persistentState.getLastLogTerm(), ERROR);
@@ -732,6 +749,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 
 		else {
 			// There is a node at the cluster believing he is the leader, but actually is not.
+			log(" >>>>>>>>>>>>>>>>>> THE OTHER SERVER HAS A LOWER TERM!", ERROR);
 			return new AppendEntriesResponse(Math.max(term, persistentState.getCurrentTerm()), false);
 		}
 	}
@@ -789,6 +807,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		// If smaller log entry,  answer the stale leader accordingly. 
 		else {
 			// There is a node at the cluster believing he is the leader, but actually is not.
+			log(">>>> IM A CANDIDATE AND THE OTHER SERVER WITH LOWER TERM BELIEVES HE IS A LEADER", ERROR);
 			return new AppendEntriesResponse(Math.max(term, persistentState.getCurrentTerm()), false);
 		}
 	}
