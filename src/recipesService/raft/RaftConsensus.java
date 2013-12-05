@@ -798,7 +798,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	 * The server has just received a vote and checks whether he can become the leader.
 	 */
 	protected void onReceivedVote() {
-		if ( receivedVotes.size() >= requiredVotes ) {
+	if ( receivedVotes.size() >= requiredVotes ) {
 			// The change state will start the heartbeats.
 			log("I've  received " + Integer.toString(receivedVotes.size()) + " votes, and the required set size is:" + Integer.toString(requiredVotes) , ERROR);
 			synchronized ( guard ) {
