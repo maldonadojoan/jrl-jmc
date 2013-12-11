@@ -458,7 +458,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 						}
 						// If failed to persist, the other one needs a higher 
 						else {
-							log ( "<<<<<<<<<<< AppendEntries rejected from host " + h + " decreasing its index.", ERROR);
 							nextIndex.decrease(h.getId());
 						}
 						
@@ -537,6 +536,13 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		
 		// If not a stale leader, count from now the heartbeat.
 		onHeartbeat();
+		
+		// From now on, I accept the other servers validity as leader. I have to fit my log to be exactly like his.
+		if ( prevLogIndex > persistentState.getLastLogIndex() ) {
+			log("####################ÊDELETING ENTRIES TO GET EVEN WITH THE LEADER " + prevLogIndex + " > " + persistentState.getLastLogIndex(), ERROR);
+			persistentState.deleteEntries(prevLogIndex);
+			log("####################ÊAfter deleting: " + prevLogIndex + " should be equal to " + persistentState.getLastLogIndex(), ERROR);
+		}
 
 		// If it fits our need in the log entries, store it.
 		if ( prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() ) {
@@ -591,6 +597,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			log("prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() is false because:" , INFO);
 			log("prevLogIndex (" + prevLogIndex + ") > " + 
 					"persistentState.getLastLogIndex() (" + persistentState.getLastLogIndex() + ")", INFO);
+			log("Rejecting append entry because my log index is less than the one passed : " + prevLogIndex + " > " + persistentState.getLastLogIndex(), ERROR);
 			return new AppendEntriesResponse(term, false);
 		}
 	}
