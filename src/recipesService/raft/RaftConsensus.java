@@ -378,7 +378,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 						//						}
 					} catch (Exception e){
 						// If an exception is to occur (no response from server or communication exception), return false to retry the runnable.
-						e.printStackTrace();
+						// Probably a DSException becaus ethe other server is down, do not print this.
+//						e.printStackTrace();
 						return false;
 					}
 					// The execution has ended successfully (even if the vote is not granted).
@@ -463,7 +464,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 						
 					} catch (Exception e) {
 						// If an exception is to occur (no response from server or communication exception), return false to retry the runnable.
-						e.printStackTrace();
+						// Do not print stack traces, too much info.
+//						e.printStackTrace();
 						return false;
 					}
 					// The execution has ended successfully
@@ -548,7 +550,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			if ( entries.size() > 0 ) {
 				// Start persisting them in our log.
 				for ( LogEntry entry : entries ) {
-					log("Appending new entry to follower persistentState : " + entry + " @ " + persistentState.getLastLogIndex(), WARN);
+					log("Appending new entry to follower persistentState @ " + persistentState.getLastLogIndex(), WARN);
 					persistentState.appendEntry(entry);
 				}
 				
@@ -586,11 +588,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		}
 		// If not correct, notify the leader that we need a previous log first.
 		else {
-			log("prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() is false because:" , ERROR);
-			log("prevLogIndex = " + prevLogIndex, ERROR);
-			log("persistentState.getLastLogIndex() = " + persistentState.getLastLogIndex(), ERROR);
-			log("prevLogTerm = " + prevLogTerm, ERROR);
-			log("persistentState.getLastLogTerm() = " + persistentState.getLastLogTerm(), ERROR);
+			log("prevLogIndex == persistentState.getLastLogIndex() && prevLogTerm == persistentState.getLastLogTerm() is false because:" , INFO);
+			log("prevLogIndex (" + prevLogIndex + ") > " + 
+					"persistentState.getLastLogIndex() (" + persistentState.getLastLogIndex() + ")", INFO);
 			return new AppendEntriesResponse(term, false);
 		}
 	}
@@ -846,8 +846,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		case LEADER:
 			log(">>>>>>>>>>>>>>>>>>> I've become the LEADER <<<<<<<<<<<<<<<<<<<<<<", WARN);
 			setLeader(getServerId());
-			nextIndex = new Index(otherServers, (commitIndex >= 0) ? commitIndex : 0);
-			matchIndex = new Index(otherServers, (commitIndex >= 0) ? commitIndex : 0);
+			// Initialize last index to my own index.
+			nextIndex = new Index(otherServers, persistentState.getLastLogIndex());
+			matchIndex = new Index(otherServers, persistentState.getLastLogIndex());
 			// sendHeartBeat(); Restart heartbeat will execute a heartbeat after 0 msecs, so we don't need to call this.
 			restartHeartBeatTimeout();
 			break;
@@ -1040,7 +1041,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 						// Retry.
 						scheduleRetry();
 					} else {
-						RaftConsensus.this.log("Runnable has expired its retries.", ERROR);
+						RaftConsensus.this.log("Runnable has expired its retries.", INFO);
 					}
 				}
 			}
@@ -1096,6 +1097,4 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 			System.err.println(getServerId() + " @ " + SIMPLE_DATE_FORMAT.format(new Date()) + " @term " + persistentState.getCurrentTerm() + " : " + msg);
 		}
 	}
-
-
 }
