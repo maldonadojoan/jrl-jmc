@@ -2,7 +2,7 @@
 <classpath>
 	<classpathentry kind="src" path="src"/>
 	<classpathentry exported="true" kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-	<classpathentry kind="lib" path="lib/lsim-commons-0.1.4.jar"/>
-	<classpathentry kind="lib" path="lib/lsim-library-0.1.4.jar"/>
+	<classpathentry kind="lib" path="LSim-libraries/lsim-commons-0.1.4.jar"/>
+	<classpathentry kind="lib" path="LSim-libraries/lsim-library-0.1.4.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

@@ -20,6 +20,8 @@
 
 package communication;
 
+import lsim.application.ApplicationManager;
+
 /**
  * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
