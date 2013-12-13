@@ -1105,6 +1105,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 	}
 
 	public String getLeaderId() {
+		if ( leader == null ) {
+			return "";
+		}
 		return leader;/* id of the leader in current term; “” if no leader */
 	}
 }
