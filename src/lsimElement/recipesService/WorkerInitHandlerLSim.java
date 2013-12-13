@@ -20,20 +20,17 @@
 
 package lsimElement.recipesService;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.List;
-import java.util.Properties;
 import java.util.Random;
 
 import communication.rmi.RMIsd;
 
 import edu.uoc.dpcs.lsim.LSimFactory;
+import edu.uoc.dpcs.lsim.utils.LSimParameters;
 
 import recipesService.ServerData;
 import recipesService.activitySimulation.ActivitySimulation;
@@ -48,56 +45,44 @@ import lsim.application.handler.Handler;
  * July 2013
  *
  */
-public class WorkerInitHandler implements Handler {
+public class WorkerInitHandlerLSim implements Handler {
 	
 	private ServerData serverData;
 	private Host localHost;
 	
 	@Override
 	public Object execute(Object obj) {
-		List<Object> params = (List<Object>) obj;
-				
-		int i=0;
-		
+		LSimParameters params = (LSimParameters) obj;
+
 		// param 0: groupId
-		Properties properties = new Properties();
-        //load a properties file
-		try {
-			properties.load(new FileInputStream("config.properties"));
-		} catch (FileNotFoundException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		} catch (IOException e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
+		String groupId = ((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("groupId"));
+		if ((String)params.get("groupId") != null){
+			// is the case of professor's instance
+			groupId = (String)params.get("groupId"); 
 		}
 
-		String groupId = properties.getProperty("groupId");
-//		String groupId = ((String)params.get(i++));
-
-		i++;
 		// new serverData + Raft parameters
 		serverData = new ServerData(
 				groupId,
-				Long.parseLong((String)params.get(i++)) // electionTimeout
+				Long.parseLong((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("electionTimeout")) // electionTimeout
 				);
 		
 		// simulation parameters
-		ActivitySimulation.getInstance().setSimulationStop(Integer.parseInt((String)params.get(i++))*1000);
-		ActivitySimulation.getInstance().setExecutionStop(Integer.parseInt((String)params.get(i++))*1000);
+		ActivitySimulation.getInstance().setSimulationStop(Integer.parseInt((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("simulationStop"))*1000);
+		ActivitySimulation.getInstance().setExecutionStop(Integer.parseInt((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("executionStop"))*1000);
 
 		Random rnd = new Random();
-		int simulationDelay = (int) (rnd.nextDouble() * (2 * Integer.parseInt((String)params.get(i++)) * 1000));
+		int simulationDelay = (int) (rnd.nextDouble() * (2 * Integer.parseInt((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("simulationDelay")) * 1000));
 		ActivitySimulation.getInstance().setSimulationDelay(simulationDelay);
-		ActivitySimulation.getInstance().setSimulationPeriod(Integer.parseInt((String)params.get(i++))*1000);
+		ActivitySimulation.getInstance().setSimulationPeriod(Integer.parseInt((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("simulationPeriod"))*1000);
 
-		ActivitySimulation.getInstance().setProbDisconnect(Double.parseDouble((String)params.get(i++)));
-		ActivitySimulation.getInstance().setProbReconnect(Double.parseDouble((String)params.get(i++)));
-		ActivitySimulation.getInstance().setProbCreate(Double.parseDouble((String)params.get(i++)));
-		ActivitySimulation.getInstance().setProbDel(Double.parseDouble((String)params.get(i))); // i not incremented because same parameter used to know if deletion is activated (next sentence)
-		ActivitySimulation.getInstance().setDeletion(!(Double.parseDouble((String)params.get(i++)) == 0.0));
+		ActivitySimulation.getInstance().setProbDisconnect(Double.parseDouble((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("probDisconnect")));
+		ActivitySimulation.getInstance().setProbReconnect(Double.parseDouble((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("probReconnect")));
+		ActivitySimulation.getInstance().setProbCreate(Double.parseDouble((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("probCreate")));
+		ActivitySimulation.getInstance().setProbDel(Double.parseDouble((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("probDel"))); // i not incremented because same parameter used to know if deletion is activated (next sentence)
+		ActivitySimulation.getInstance().setDeletion(!(Double.parseDouble((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("probDel")) == 0.0));
 
-		ActivitySimulation.getInstance().setSamplingTime(Integer.parseInt((String)params.get(i++))*1000);
+		ActivitySimulation.getInstance().setSamplingTime(Integer.parseInt((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("samplingTime"))*1000);
 		
 		// parameter to indicate if all Servers will run in a single computer
 		// or they will run Servers hosted in different computers (or more than one 
@@ -105,7 +90,7 @@ public class WorkerInitHandler implements Handler {
 		// * true: all Server run in a single computer
 		// * false: Servers running in different computers (or more than one Server in a single computer but
 		// 			this computer having the same internal and external IP address)
-		ActivitySimulation.getInstance().setLocalExecution(((String)params.get(i++)).equals("localMode"));
+		ActivitySimulation.getInstance().setLocalExecution(((String)((LSimParameters)params.get("coordinatorLSimParameters")).get("executionMode")).equals("localMode"));
 		
 		
 //		//         this computer having the same internal and external IP address) 
@@ -129,7 +114,7 @@ public class WorkerInitHandler implements Handler {
 		}
 		
 		int hostPort = RMIsd.getInstance().createRMIregistry(hostAddress);
-		
+
 //
 //		// waits until the serverPartnerSide has published the service in a port
 //		serverPartnerSide.waitServicePublished(); <--- Crec que es podria treure
@@ -140,7 +125,7 @@ public class WorkerInitHandler implements Handler {
 		System.out.println("WorkerInitHandler --> id: "+id);
 //		id = groupId+"@"+hostAddress+":"+serverPartnerSide.getPort(); <---- cal comprovar si es pot fer servir com id al nom del servei que es publica al registre
 
-		// create local node information to send to coordinator node
+		// createlocal node information to send to coordinator node
 		localHost = new Host(hostAddress, hostPort, id);
 		
         // init return value

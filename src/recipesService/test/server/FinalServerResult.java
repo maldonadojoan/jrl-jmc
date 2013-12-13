@@ -18,28 +18,29 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package util;
+package recipesService.test.server;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.Serializable;
 
-public class Serializer {
-    public static byte[] serialize(Object obj) throws IOException {
-        ByteArrayOutputStream b = new ByteArrayOutputStream();
-        ObjectOutputStream o = new ObjectOutputStream(b);
-        o.writeObject(obj);
-        return b.toByteArray();
-    }
+/**
+ * @author Joan-Manuel Marques
+ * January 2012
+ *
+ */
 
-    public static Object deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
-		if (bytes == null){
-			return null;
-		}
-        ByteArrayInputStream b = new ByteArrayInputStream(bytes);
-        ObjectInputStream o = new ObjectInputStream(b);
-        return o.readObject();
-    }
+public class FinalServerResult extends ResultBase implements Serializable{
+
+	private static final long serialVersionUID = 8109894826923035975L;
+
+	public FinalServerResult(ServerResult serverResult){
+		super(serverResult);
+	}
+	
+	public ResultType type(){
+		return ResultType.FINAL;
+	}
+	
+	public String toString(){
+		return "[" + this.type() + "] " +this.getServerResult();
+	}
 }

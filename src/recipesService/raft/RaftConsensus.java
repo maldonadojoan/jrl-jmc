@@ -357,7 +357,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 					try {
 						//						if (!isLeader()){ Joan,This should be done in the canRun.
 						log("Requesting vote of server " + h.getId(), INFO);
-						RequestVoteResponse voteResponse = communication.requestVote(h.getId(), term, getServerId(), 
+						RequestVoteResponse voteResponse = communication.requestVote(h, term, getServerId(), 
 								persistentState.getLastLogIndex(),persistentState.getLastLogTerm());
 
 						// Controlling null pointer exception
@@ -425,7 +425,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 							entries = new ArrayList<LogEntry>();
 						}
 						
-						AppendEntriesResponse appendResponse = communication.appendEntries(h.getId(),
+						AppendEntriesResponse appendResponse = communication.appendEntries(h,
 								persistentState.getCurrentTerm(), leader,
 								index,term, 
 								entries, commitIndex); // Send entries from nextindex
@@ -1097,5 +1097,14 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft{
 		}
 	}
 
+	//
+	// Other methods
+	//	
+	public long getCurrentTerm() {
+		return persistentState.getCurrentTerm();
+	}
 
+	public String getLeaderId() {
+		return leader;/* id of the leader in current term; “” if no leader */
+	}
 }

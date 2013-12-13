@@ -18,28 +18,34 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package util;
+package lsimElement.recipesService.client;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 
-public class Serializer {
-    public static byte[] serialize(Object obj) throws IOException {
-        ByteArrayOutputStream b = new ByteArrayOutputStream();
-        ObjectOutputStream o = new ObjectOutputStream(b);
-        o.writeObject(obj);
-        return b.toByteArray();
-    }
+import recipesService.communication.Host;
 
-    public static Object deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
-		if (bytes == null){
-			return null;
-		}
-        ByteArrayInputStream b = new ByteArrayInputStream(bytes);
-        ObjectInputStream o = new ObjectInputStream(b);
-        return o.readObject();
-    }
+import util.Serializer;
+import edu.uoc.dpcs.lsim.utils.LSimParameters;
+import lsim.application.handler.Handler;
+
+/**
+ * @author Joan-Manuel Marques
+ * November 2013
+ *
+ */
+
+public class WorkerInitClientHandler implements Handler {
+
+	private LSimParameters params;
+	
+	@Override
+	public Object execute(Object obj) {
+		params = (LSimParameters) obj;
+
+		return null;
+	}
+
+	public LSimParameters getParameters(){
+		return params;
+	}
 }

@@ -18,30 +18,29 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package recipesService.test.server;
+package lsimElement.evaluator;
 
-import java.io.Serializable;
+import edu.uoc.dpcs.lsim.LSimFactory;
+import edu.uoc.dpcs.lsim.exceptions.LSimExceptionMessage;
+import lsim.application.handler.Handler;
 
 /**
  * @author Joan-Manuel Marques
- * January 2012
+ * January 2013
  *
  */
+public class EvaluatorTimeOutAction implements Handler{
 
-public abstract class ResultBase implements Serializable{
+	@Override
+	public Object execute(Object arg0){
+//    	System.out.println("--- *** ---> Evaluator was unable to evaluate results due to: Not all required data received.");
+    	LSimFactory.getEvaluatorInstance().log(
+				"",
+				"--- *** ---> Evaluator was unable to evaluate results due to: Not all required data received."
+				);
+		LSimFactory.getEvaluatorInstance().logException(new LSimExceptionMessage("Evaluator was unable to evaluate results due to: Not all required data received.", null, null));
+    	throw new EndReceivingResults();
+//		return null;
+	}
 
-	private static final long serialVersionUID = 423061744091410681L;
-	private ServerResult serverResult;
-	
-	public ResultBase(ServerResult serverResult){
-		this.serverResult = serverResult;
-	}
-	
-	public ServerResult getServerResult(){
-		return serverResult;
-	}
-	
-	public abstract ResultType type();
-	
-	public abstract String toString();
 }

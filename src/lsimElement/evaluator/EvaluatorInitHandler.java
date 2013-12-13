@@ -18,16 +18,9 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package lsimElement.recipesService;
-
-import java.io.IOException;
-import java.util.Iterator;
-import java.util.List;
+package lsimElement.evaluator;
 
 import edu.uoc.dpcs.lsim.utils.LSimParameters;
-import recipesService.communication.Host;
-import recipesService.communication.Hosts;
-import util.Serializer;
 
 import lsim.application.handler.Handler;
 
@@ -36,34 +29,38 @@ import lsim.application.handler.Handler;
  * December 2012
  *
  */
-public class WorkerStartHandler implements Handler {
+public class EvaluatorInitHandler implements Handler {
 	
-	private Object values;
-
+	LSimParameters values;
+	
 	@Override
 	public Object execute(Object obj) {
-		values = obj;
+		values = (LSimParameters) obj;
+		
 		return null;
 	}
+	
+	public int getPercentageRequiredResults(){
+		return Integer.parseInt((String)values.get("percentageRequieredResults"));
+	}
 
-	public Hosts getParticipants(){
-		return getParticipants(null);
+	public int getNumNodes(){
+		return ((Integer) values.get("numServers")).intValue();
 	}
 	
-	public Hosts getParticipants(Host localNode) {
-		Hosts participants = new Hosts(localNode);
-		List<Object> startValues = (List<Object>) values;
-		for (Object object : startValues){
-			if (object != null){
-				try {
-					Host host = (Host) Serializer.deserialize((byte []) object);
-					participants.add(host);
-				} catch (ClassNotFoundException | IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
-		}
-		return participants;
+	public String getGroupId(){
+		return ((String) values.get("groupId"));
+	}
+	
+	public String getPhase(){
+		return ((String) values.get("phase"));
+	}
+	
+	public String getRecipeDeadTitle(){
+		return ((String) values.get("recipeDeadTitle"));
+	}
+
+	public String getRecipeSurviveTitle(){
+		return ((String) values.get("recipeSurviveTitle"));
 	}
 }

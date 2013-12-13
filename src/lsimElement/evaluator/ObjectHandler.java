@@ -18,28 +18,27 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package util;
+package lsimElement.evaluator;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import lsim.application.handler.Handler;
 
-public class Serializer {
-    public static byte[] serialize(Object obj) throws IOException {
-        ByteArrayOutputStream b = new ByteArrayOutputStream();
-        ObjectOutputStream o = new ObjectOutputStream(b);
-        o.writeObject(obj);
-        return b.toByteArray();
-    }
+/**
+ * @author Joan-Manuel Marques
+ * December 2012
+ *
+ */
+public class ObjectHandler<E> implements Handler {
+	
+	private E value;
 
-    public static Object deserialize(byte[] bytes) throws IOException, ClassNotFoundException {
-		if (bytes == null){
-			return null;
-		}
-        ByteArrayInputStream b = new ByteArrayInputStream(bytes);
-        ObjectInputStream o = new ObjectInputStream(b);
-        return o.readObject();
-    }
+	@Override
+	public Object execute(Object obj) {
+		value = (E) obj;		
+		return value;
+	}
+
+	public E getValue() {
+		return value;
+	}
+
 }
