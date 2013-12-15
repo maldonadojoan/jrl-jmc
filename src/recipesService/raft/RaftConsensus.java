@@ -65,7 +65,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	private static final int WARN = 3;
 	private static final int ERROR = 4;
 
-	private static final int DEBUG_LEVEL = WARN; // Everything from DEBUG_LEVEL to above will be logged.
+	private static final int DEBUG_LEVEL = ERROR; // Everything from DEBUG_LEVEL to above will be logged.
 
 	// current server
 	private Host localHost;
@@ -81,9 +81,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	private int commitIndex = 0; // index of highest log entry known to be
 	// committed (initialized to 0, increases
 	// monotonically)
-	private int lastApplied = 0; // index of highest log entry applied to state
-	// machine (initialized to 0, increases
-	// monotonically)
+	private int lastApplied = 0; // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 
 	// Cooking Recipes
 	private CookingRecipes recipes = new CookingRecipes();
@@ -867,6 +865,34 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 					+ persistentState.getCurrentTerm() + " : " + msg);
 		}
 	}
+	
+	/**
+	 * Based on nextIndex, calculate the commit index.
+	 */
+	public void recalculateCommitIndex() {
+		synchronized (guard) {
+			// If not leader wait for leader commit index.
+			if ( !isLeader() ) {
+				return;
+			}
+			
+			int lastIndex = commitIndex;
+			// For each value that can be commited, check if it is so.
+			int lastLogIndex = persistentState.getLastLogIndex();
+			log ("Iterating from " + lastIndex + " to " + lastLogIndex + " to get the new commit index",WARN);
+			for ( int i = lastIndex ; i < lastLogIndex ; i++ ) {
+				if ( matchIndex.majorityHigherOrEqual(i) ) {
+					commitIndex = i;
+				}
+			}
+			// Only if modifications awake thread.
+			if ( lastIndex != commitIndex ) {
+				log ( "Committed data up to " + commitIndex + " , awaking thread.",WARN);
+				committer.awakeThread();
+			}
+		}
+	}
+	
 
 	/******************************************************************************
 	 * 
@@ -902,6 +928,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 						onIteration();
 					} catch (Exception e){
 						// Nop
+//						e.printStackTrace();
 					}
 				}
 
@@ -1068,8 +1095,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 						}
 						if (lastIndex > nextIndex.getIndex(host.getId())) {
 							nextIndex.setIndex(host.getId(), lastIndex + 1);
+							// Only after recalculate commit index is this one.
+							recalculateCommitIndex();
 						}
-
 					}
 				}
 				// If failed to persist, the other one needs a higher
@@ -1252,21 +1280,19 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		@Override
 		protected void onIteration() {
 			synchronized (recipes) {
-				log("Getting entries from point " + lastApplied, VERBOSE);
-				List<LogEntry> entries = persistentState
-						.getLogEntries(lastApplied);
-				for (LogEntry entry : entries) {
-					// When the last applied equals the commit index. Stop
-					// commiting data.
-					if (lastApplied == commitIndex) {
-						log("Didn't commit any more entries because commitIndex has already been reached",
-								INFO);
+				log("Getting entries from point " + (lastApplied + 1), VERBOSE);
+				List<LogEntry> entries = persistentState.getLogEntries(lastApplied + 1);
+				for ( LogEntry entry : entries ) {
+					// while last applied is less than commit index, commit data.
+					if ( lastApplied - 1 < commitIndex ) {
+						log("Committing index " + lastApplied, DEBUG);
+						Operation op = entry.getCommand();
+						RaftConsensus.this.execute(op);
+						lastApplied++;
+					} else {
+						log("Won't commit any more entries because commitIndex has already been reached: " + lastApplied + " == " + commitIndex, DEBUG);
 						break;
 					}
-					log("Committing index " + lastApplied, WARN);
-					Operation op = entry.getCommand();
-					RaftConsensus.this.execute(op);
-					lastApplied++;
 				}
 			}
 		}
