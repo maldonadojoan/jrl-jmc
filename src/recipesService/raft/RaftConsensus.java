@@ -337,19 +337,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			String leaderId, int prevLogIndex, long prevLogTerm,
 			List<LogEntry> entries, int leaderCommit) {
 
-		// Same term, with different leader update it.
-		if (term == persistentState.getCurrentTerm()) {
-			log("Received append entries for my term. Updating leader if needed", DEBUG);
-			synchronized (guard) {
-				setLeader(leaderId);
-			}
-		}
-
-		// If stale leader, notify him
-		if (term < persistentState.getCurrentTerm()) {
-			log("Received append entry with older term.", ERROR);
-			return new AppendEntriesResponse(persistentState.getCurrentTerm(),	false);
-		} else if (term > persistentState.getCurrentTerm()) {
+		// If leader with higher term, update ourselves.
+		if (term > persistentState.getCurrentTerm()) {
 			log("Received append entry with newer term.", ERROR);
 			synchronized (guard) {
 				persistentState.setCurrentTerm(term);
@@ -357,47 +346,57 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			}
 		}
 
-		// If not a stale leader, count from now the heartbeat.
-		onHeartbeat();
-
-		// Update commit index.
-		commitIndex = leaderCommit;
-
-		// Start committer thread.
-		committer.awakeThread();
-
-		// Check previous log term
-		if ( prevLogTerm != persistentState.getLastLogTerm() ) {
-			log ("Unexpected previous log term.",ERROR);
-			return new AppendEntriesResponse(term, false);
-		}
-
-		// check previous log index is ok.
-		if ( prevLogIndex != persistentState.getLastLogIndex() + 1 && prevLogIndex != 0 ) {
-			log("Unexpected previous log index " + prevLogIndex + ". My last index is " + persistentState.getLastLogIndex(), WARN);
-			return new AppendEntriesResponse(term, false);
-		}
-		
-		// Store it to log.
-		if (entries == null) {
-			log(">>>>>>>>>>>>>>>>>>>>>>>>> Null entries received!", ERROR);
-			return new AppendEntriesResponse(term, true);
-		}
-
-		// If entries available
-		if (entries.size() > 0) {
-			// Start persisting them in our log.
-			for (LogEntry entry : entries) {
-				log("Appending new entry to follower persistentState : " + 
-						entry + " @ " + persistentState.getLastLogIndex(), WARN);
-				persistentState.appendEntry(entry);
+		// Same term, with different leader update it.
+		else if (term == persistentState.getCurrentTerm()) {
+			log("Received append entries for my term. Updating leader if needed", DEBUG);
+			synchronized (guard) {
+				setLeader(leaderId);
 			}
-			// Start committer thread.
-			committer.awakeThread();
-		} else {
-			log("Did not receive any entry", DEBUG);
 		}
-		return new AppendEntriesResponse(term, true);
+
+		synchronized (guard) {
+			// From raft pdf:
+			// Receiver implementation:
+			// 1. Reply false if term < currentTerm (§5.1)
+			if ( term < persistentState.getCurrentTerm()) {
+				return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
+			}
+
+			// If not a stale leader, count from now the heartbeat.
+			onHeartbeat();
+			
+			// 2. Reply false if log doesn’t contain an entry at prevLogIndex
+			// whose term matches prevLogTerm (§5.3)
+			LogEntry entry = persistentState.getLogEntry(prevLogIndex);
+			if ( entry != null && entry.getTerm() != prevLogTerm ) {
+				return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
+			}
+
+			// If entries available
+			if (entries.size() > 0) {
+				// 3. If an existing entry conflicts with a new one (same index
+				// but different terms), delete the existing entry and all that
+				// follow it (§5.3)
+				persistentState.deleteEntries(prevLogIndex);
+				
+				// 4. Append any new entries not already in the log
+				for (LogEntry e: entries) {
+					persistentState.appendEntry(e);
+				}
+			} else {
+				log("Did not receive any entry", DEBUG);
+			}
+
+			// 5. If leaderCommit > commitIndex, set commitIndex =
+			// min(leaderCommit, last log index)
+			if ( leaderCommit > commitIndex ) {
+				commitIndex = Math.min(leaderCommit, persistentState.getLastLogIndex());
+				// Start committer thread.
+				committer.awakeThread();
+			}
+			
+			return new AppendEntriesResponse(persistentState.getCurrentTerm(), true);
+		}
 	}
 
 	/**
@@ -565,12 +564,12 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				// If change of leader
 				log("Accepted leader " + leaderId, ERROR);
 				leader = leaderId;
-				
+
 				// Set to follower if a different leader from us.
 				if ( !getServerId().equals(leaderId) ) {
 					changeState(RaftState.FOLLOWER);
 				}
-				
+
 			}
 		} else {
 			if (leader != null) {
@@ -1063,9 +1062,14 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				if (appendResponse.isSucceeded()) {
 					log("<<<<<<<<<<< AppendEntries accepted from host " + host,	INFO);
 					synchronized (guard) {
-						// Always update the matchindex
-						matchIndex.setIndex(host.getId(), lastIndex);
-						nextIndex.setIndex(host.getId(), lastIndex);	
+						// Update indexes
+						if (lastIndex > matchIndex.getIndex(host.getId())) {
+							matchIndex.setIndex(host.getId(), lastIndex + 1);
+						}
+						if (lastIndex > nextIndex.getIndex(host.getId())) {
+							nextIndex.setIndex(host.getId(), lastIndex + 1);
+						}
+
 					}
 				}
 				// If failed to persist, the other one needs a higher
@@ -1079,7 +1083,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 			} catch (Exception e) {
 				// Retry if some error has happened (probably IOException).
-				log ("Exception happened during the heartbeat delivery: " + e.getMessage(), WARN);
+				log ("Exception happened during the heartbeat delivery: " + e.getClass(), WARN);
+				e.printStackTrace();
 				return;
 			}
 		}
