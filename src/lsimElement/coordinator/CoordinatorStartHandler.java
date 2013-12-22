@@ -53,7 +53,7 @@ public class CoordinatorStartHandler implements Handler {
 			if (object != null){
 				try {
 					workers.add((Host) Serializer.deserialize((byte []) object));
-				} catch (ClassNotFoundException | IOException e) {
+				} catch (Exception e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}

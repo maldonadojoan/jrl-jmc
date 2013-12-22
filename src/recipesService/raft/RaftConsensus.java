@@ -240,7 +240,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				t.join();
 			}
 		} catch (InterruptedException e) {
-			e.printStackTrace();
+			log("Interrupted exception: " + e.getMessage(), ERROR);
 		}
 	}
 
@@ -1112,7 +1112,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			} catch (Exception e) {
 				// Retry if some error has happened (probably IOException).
 				log ("Exception happened during the heartbeat delivery: " + e.getClass(), WARN);
-				e.printStackTrace();
 				return;
 			}
 		}

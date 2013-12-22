@@ -112,7 +112,7 @@ public class RMIsd {
 							+ serverData.getServerId(),
 							stub
 					);			
-			} catch (RemoteException | AlreadyBoundException e) {
+			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
@@ -245,7 +245,7 @@ public class RMIsd {
 					);
 			return stub.requestVote(term, id, lastLogIndex, lastLogTerm);
 
-		} catch (RemoteException | NotBoundException e) {
+		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			//						e.printStackTrace();
 			throw new DSException("Destination host not reachable: a network error has occured or the testing environment simulates that the destination host is failed");
@@ -288,7 +288,7 @@ public class RMIsd {
 							+ destination.getId()
 					);
 			return stub.appendEntries (term, leaderId, prevLogIndex, prevLogTerm, entries, commitIndex);
-		} catch (RemoteException | NotBoundException e) {
+		} catch (Exception e) {
 			// TODO Auto-generated catch block
 //						e.printStackTrace();
 			throw new DSException("Destination host not reachable: a network error has occured or the testing environment simulates that the destination host is failed");

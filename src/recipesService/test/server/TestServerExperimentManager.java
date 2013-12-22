@@ -540,7 +540,7 @@ public class TestServerExperimentManager extends Thread{
 	}
 
 	private static void undoLastAdds(ServerResult serverResult) {
-		Set<String> seenClients = new HashSet<>();
+		Set<String> seenClients = new HashSet<String>();
 		List<LogEntry> reverseLog = new ArrayList<LogEntry>(serverResult.getLog()); Collections.reverse(reverseLog);
 		for (LogEntry entry : reverseLog) {
 			String clientId = entry.getCommand().getTimestamp().getHostId();

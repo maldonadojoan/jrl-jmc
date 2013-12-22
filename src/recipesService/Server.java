@@ -163,7 +163,7 @@ public class Server implements ApplicationManager {
         	out.writeObject(new TestServerMessage(TestServerMsgType.GET_PORT, groupId, null));
 
         	ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
-        	testServerPort = (int) in.readObject();
+        	testServerPort = (Integer) in.readObject();
         	// get initialization information from TestServer
         	// (initialization is done using a WorkerInitHandler to maintain consistency with LSim mode of execution)
  

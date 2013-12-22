@@ -177,7 +177,7 @@ public class TestServer {
 				clientSocket.close();
 			}catch(java.net.SocketTimeoutException e){
 				end = !forever;
-			}catch (IOException | ClassNotFoundException e1) {
+			}catch (Exception e1) {
 				// TODO Auto-generated catch block
 				e1.printStackTrace();
 			}

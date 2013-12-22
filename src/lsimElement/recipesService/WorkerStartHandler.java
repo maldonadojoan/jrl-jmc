@@ -58,7 +58,7 @@ public class WorkerStartHandler implements Handler {
 				try {
 					Host host = (Host) Serializer.deserialize((byte []) object);
 					participants.add(host);
-				} catch (ClassNotFoundException | IOException e) {
+				} catch (Exception e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}

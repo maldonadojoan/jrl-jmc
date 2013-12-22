@@ -308,7 +308,7 @@ public class Clients implements ApplicationManager{
 										stop = true;
 									}
 									leader = hosts.getHost(response.getLeader());
-								} catch (RemoteException | NotBoundException e) {
+								} catch (Exception e) {
 									// TODO Auto-generated catch block
 									//						e.printStackTrace();
 									System.err.println("["+clientId+"] Destination host "+sendTo+" not reachable: a network error has occured or the testing environment simulates that the destination host is failed");
