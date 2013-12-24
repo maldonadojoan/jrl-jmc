@@ -1328,7 +1328,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 					count++;
 				}
 			}
-			//TODO: majority enlloc de tots!!!
 			return (count >= (index.size()/2));
 		}
 		
