@@ -23,6 +23,7 @@ import java.rmi.RemoteException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -41,7 +42,6 @@ import recipesService.raft.dataStructures.PersistentState;
 import recipesService.raftRPC.AppendEntriesResponse;
 import recipesService.raftRPC.RequestVoteResponse;
 import recipesService.test.client.RequestResponse;
-
 import communication.rmi.RMIsd;
 
 /**
@@ -109,10 +109,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	//
 
 	// Volatile state on leaders
-	private Index nextIndex; // for each server, index of the next log entry to
+	private CustomIndex nextIndex; // for each server, index of the next log entry to
 	// send to that server (initialized to leader
 	// last log index + 1)
-	private Index matchIndex; // for each server, index of highest log known to
+	private CustomIndex matchIndex; // for each server, index of highest log known to
 	// be replicated on server (initialized to 0,
 	// increases monotonically)
 
@@ -196,7 +196,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 
 		if ( matchIndex == null ) {
-			matchIndex = new Index(otherServers, 0);
+			matchIndex = new CustomIndex(otherServers, 0);
 		}
 
 		synchronized (guard) {
@@ -240,7 +240,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				t.join();
 			}
 		} catch (InterruptedException e) {
-			log("Interrupted exception: " + e.getMessage(), ERROR);
+			e.printStackTrace();
 		}
 	}
 
@@ -355,7 +355,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		synchronized (guard) {
 			// From raft pdf:
 			// Receiver implementation:
-			// 1. Reply false if term < currentTerm (§5.1)
+			// 1. Reply false if term < currentTerm (��5.1)
 			if ( term < persistentState.getCurrentTerm()) {
 				return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
 			}
@@ -363,8 +363,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			// If not a stale leader, count from now the heartbeat.
 			onHeartbeat();
 			
-			// 2. Reply false if log doesn’t contain an entry at prevLogIndex
-			// whose term matches prevLogTerm (§5.3)
+			// 2. Reply false if log doesn���t contain an entry at prevLogIndex
+			// whose term matches prevLogTerm (��5.3)
 			LogEntry entry = persistentState.getLogEntry(prevLogIndex);
 			if ( entry != null && entry.getTerm() != prevLogTerm ) {
 				return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
@@ -374,7 +374,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			if (entries.size() > 0) {
 				// 3. If an existing entry conflicts with a new one (same index
 				// but different terms), delete the existing entry and all that
-				// follow it (§5.3)
+				// follow it (��5.3)
 				persistentState.deleteEntries(prevLogIndex);
 				
 				// 4. Append any new entries not already in the log
@@ -664,7 +664,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		case LEADER:
 			log(">>>>>>>>>>>>>>>>>>> I've become the LEADER <<<<<<<<<<<<<<<<<<<<<<", WARN);
 			setLeader(getServerId());
-			nextIndex = new Index(otherServers, persistentState.getLastLogIndex() + 1);
+			nextIndex = new CustomIndex(otherServers, persistentState.getLastLogIndex() + 1);
 
 			// Start heartbeaters.
 			for (Host h : otherServers) {
@@ -836,7 +836,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		if (leader == null) {
 			return "";
 		}
-		return leader;/* id of the leader in current term; “” if no leader */
+		return leader;/* id of the leader in current term; ������ if no leader */
 	}
 
 	/**
@@ -1112,6 +1112,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			} catch (Exception e) {
 				// Retry if some error has happened (probably IOException).
 				log ("Exception happened during the heartbeat delivery: " + e.getClass(), WARN);
+				e.printStackTrace();
 				return;
 			}
 		}
@@ -1307,5 +1308,29 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			// him by issuing an awakeThread.
 			return 5000l;
 		}
+	}
+	
+	/**
+	 * Custom index to calculate correctly if a majority exists during cluster operation
+	 */
+	public class CustomIndex extends Index {
+		
+		private HashMap<String, Integer> index;
+
+		public CustomIndex(List<Host> servers, int intialIndex) {
+			super(servers, intialIndex);
+		}
+		
+		public boolean majorityHigherOrEqual(int n){
+			int count = 0;
+			for (Integer i : index.values()){
+				if (Integer.valueOf(i) >= n){
+					count++;
+				}
+			}
+			//TODO: majority enlloc de tots!!!
+			return (count >= (index.size()/2));
+		}
+		
 	}
 }
