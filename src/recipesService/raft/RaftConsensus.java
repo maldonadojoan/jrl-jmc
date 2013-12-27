@@ -79,8 +79,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 	// raft volatile state on all servers
 	private int commitIndex = 0; // index of highest log entry known to be
-	// committed (initialized to 0, increases
-	// monotonically)
+	
+	// committed (initialized to 0, increases monotonically)
 	private int lastApplied = 0; // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 
 	// Cooking Recipes
@@ -101,8 +101,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 	// If a timeout occurs, it assumes there is no viable leader.
 	private Set<Host> receivedVotes; // contains hosts that have voted for this
-	// server as candidate in a leader
-	// election
+	// server as candidate in a leader election
 
 	//
 	// LEADER
@@ -131,10 +130,13 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	private List<Host> otherServers; // list of partner servers (localHost not
 	// included in the list)
 
+	// The number of votes required to become the leader (i.e. majority).
 	private int requiredVotes;
 
-	private boolean connected = false;
+	// If true we are currently connected
+	private AtomicBoolean connected = new AtomicBoolean(false);
 
+	// Threads created by the process
 	private final ArrayList<VoteRequesterThread> voteRequesters = new ArrayList<VoteRequesterThread>();
 
 	private final ArrayList<HeartBeatSenderThread> heartbeaters = new ArrayList<HeartBeatSenderThread>();
@@ -203,7 +205,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			changeState(RaftState.FOLLOWER);
 			setLeader(null);
 
-			connected = true;
+			connected.set(true);
 		}
 	}
 
@@ -215,6 +217,11 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				+ persistentState.getCurrentTerm() + " with leader " + leader
 				+ " >>>>>>>>>>>", ERROR);
 
+		// Stop all threads.
+		synchronized (guard) {
+			connected.set(false);
+		}
+		
 		// Stop vote requesters.
 		for (RaftThread t : voteRequesters) {
 			t.stopThread();
@@ -223,11 +230,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		// Stop heartbeaters.
 		for (RaftThread t : heartbeaters) {
 			t.stopThread();
-		}
-
-		// Stop all threads.
-		synchronized (guard) {
-			connected = false;
 		}
 
 		// Wait threads:
@@ -364,14 +366,14 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				// 2. Reply false if log doesn't contain an entry at prevLogIndex
 				// whose term matches prevLogTerm (5.3)
 				if ( entry.getTerm() != prevLogTerm ) {
+					// 3. If an existing entry conflicts with a new one (same index
+					// but different terms), delete the existing entry and all that
+					// follow it (5.3)
+					log("Discarding entries from " + prevLogIndex + " to " + persistentState.getLastLogIndex() +
+							" because entry term " + entry.getTerm() + " does not match " + prevLogTerm, ERROR);
+					persistentState.deleteEntries(prevLogIndex);
 					return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);					
 				}
-				
-				// 3. If an existing entry conflicts with a new one (same index
-				// but different terms), delete the existing entry and all that
-				// follow it (5.3)
-				log("Discarding entries from " + prevLogIndex + " to " + persistentState.getLastLogIndex(), ERROR);
-				persistentState.deleteEntries(prevLogIndex);
 			}
 
 			// 4. Append any new entries not already in the log
@@ -736,7 +738,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				return false;
 			}
 //			 and candidate's log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
-			if ( !fresherOrEqualLog(lastLogIndex, lastLogTerm) ) {
+			if ( fresherLog(lastLogIndex, lastLogTerm) ) {
 				log("Not granting vote because our term is fresher: "
 						+ "[" + persistentState.getLastLogTerm() + "," + persistentState.getLastLogIndex() + "]" 
 						+ " > "
@@ -758,18 +760,18 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	/**
 	 * @param lastLogIndex
 	 * @param lastLogTerm
-	 * @return true if the log is fresher than the given index and term values.
+	 * @return true if my log is fresher than the given index and term values.
 	 */
-	private boolean fresherOrEqualLog(int lastLogIndex, long lastLogTerm) {
-		if ( persistentState.getLastLogIndex() > lastLogTerm) {
+	private boolean fresherLog(int lastLogIndex, long lastLogTerm) {
+		if ( persistentState.getLastLogTerm() > lastLogTerm) {
 			return true;
 		}
 		
-		if ( persistentState.getLastLogIndex() < lastLogTerm) {
-			return false;
+		if ( persistentState.getLastLogTerm() < lastLogTerm) {
+			return false; 
 		}
 
-		return persistentState.getLastLogIndex() >= lastLogIndex;
+		return persistentState.getLastLogIndex() > lastLogIndex;
 	}
 
 	/**
@@ -938,7 +940,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			stop.set(false);
 			// If stop is true, finish the thread.
 			while (!stop.get()) {
-				if (connected) {
+				if ( connected.get() ) {
 					try {
 						// Execute abstract operation that performs its work.
 						onIteration();
@@ -1258,7 +1260,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			long timeoutValue = timeout.getAndSet(interval + System.currentTimeMillis());
 
 			// If not connected ignore.
-			if ( !connected ) {
+			if ( !connected.get() ) {
 				log("Not starting an election because we are not currently connected", VERBOSE);
 				return;
 			}
