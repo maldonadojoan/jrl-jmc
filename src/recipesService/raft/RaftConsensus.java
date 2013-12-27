@@ -79,12 +79,9 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 	// raft volatile state on all servers
 	private int commitIndex = 0; // index of highest log entry known to be
-	
+
 	// committed (initialized to 0, increases monotonically)
 	private int lastApplied = 0; // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
-
-	// Cooking Recipes
-	private CookingRecipes recipes = new CookingRecipes();
 
 	// other
 	private RaftState state = RaftState.FOLLOWER;
@@ -221,7 +218,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		synchronized (guard) {
 			connected.set(false);
 		}
-		
+
 		// Stop vote requesters.
 		for (RaftThread t : voteRequesters) {
 			t.stopThread();
@@ -265,15 +262,15 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		synchronized (guard) {
 			// 2-Change to candidate state
 			if (state == RaftState.CANDIDATE) {
-				log(">>>>>>>> The election ended without choosing a leader, therefore, it will be restarted <<<<<<<<<< ", WARN);
+				log(">>>>>>>> The election ended without choosing a leader, therefore, it will be restarted <<<<<<<<<< ", INFO);
 			} else {
-				log(">>>>>>>> Starting election on host " + getServerId(), WARN);
+				log(">>>>>>>> Starting election on host " + getServerId(), INFO);
 			}
 
 			// 1-Increment current term
 			persistentState.nextTerm();
 			long term = persistentState.getCurrentTerm();
-			log("Incrementing my term to " + term, WARN);
+			log("Incrementing my term to " + term, INFO);
 
 			// 2 - Clear list of received votes
 			this.receivedVotes = new HashSet<Host>();
@@ -336,11 +333,11 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			if ( term < persistentState.getCurrentTerm()) {
 				return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
 			}
-			
+
 
 			// If leader with higher term, update ourselves.
 			else if (term > persistentState.getCurrentTerm()) {
-				log("Received append entry with newer term.", ERROR);
+				log("Received append entry with newer term.", INFO);
 				synchronized (guard) {
 					persistentState.setCurrentTerm(term);
 					setLeader(leaderId);
@@ -357,23 +354,19 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 			// If not a stale leader, count from now the heartbeat.
 			onHeartbeat();
-			
-			// Get the entry at prev log index
-			LogEntry entry = persistentState.getLogEntry(prevLogIndex);
-			
-			// If available...
-			if ( entry != null ) {
-				// 2. Reply false if log doesn't contain an entry at prevLogIndex
-				// whose term matches prevLogTerm (5.3)
-				if ( entry.getTerm() != prevLogTerm ) {
-					// 3. If an existing entry conflicts with a new one (same index
-					// but different terms), delete the existing entry and all that
-					// follow it (5.3)
-					log("Discarding entries from " + prevLogIndex + " to " + persistentState.getLastLogIndex() +
-							" because entry term " + entry.getTerm() + " does not match " + prevLogTerm, ERROR);
+
+			// 2. Reply false if log doesn't contain an entry at prevLogIndex
+			// whose term matches prevLogTerm (5.3)
+			if ( persistentState.getTerm(prevLogIndex) != prevLogTerm ) {
+				// 3. If an existing entry conflicts with a new one (same index
+				// but different terms), delete the existing entry and all that
+				// follow it (5.3)
+				if ( prevLogIndex > 0 ) {
+					log("Deleting invalid entries from log.", WARN);
 					persistentState.deleteEntries(prevLogIndex);
-					return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);					
 				}
+				log("Rejecting append entry because term " + prevLogTerm + "!=" + persistentState.getTerm(prevLogIndex), ERROR);
+				return new AppendEntriesResponse(persistentState.getCurrentTerm(), false);
 			}
 
 			// 4. Append any new entries not already in the log
@@ -389,7 +382,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				// Start committer thread.
 				committer.awakeThread();
 			}
-			
+
 			// Ok to leader.
 			return new AppendEntriesResponse(persistentState.getCurrentTerm(), true);
 		}
@@ -406,13 +399,12 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		case ADD:
 			AddOperation add = (AddOperation) op;
 			log("Executing add recipe operation: " + add.getRecipe(), WARN);
-			recipes.addRecipe(add.getRecipe());
+			addRecipe(add.getRecipe());
 			break;
 		case REMOVE:
 			RemoveOperation del = (RemoveOperation) op;
-			log("Executing delete recipe operation: " + del.getRecipeTitle(),
-					WARN);
-			recipes.removeRecipe(del.getRecipeTitle());
+			log("Executing delete recipe operation: " + del.getRecipeTitle(), WARN);
+			removeRecipe(del.getRecipeTitle());
 			break;
 		}
 	}
@@ -436,30 +428,29 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		persistentState.addEntry(operation);
 
 		final int indexCommitRequired = persistentState.getLastLogIndex();
-		log("The last index is the one we will need to get: "
-				+ indexCommitRequired, DEBUG);
+		log("The last index is the one we will need to get: " + indexCommitRequired, DEBUG);
 
 		log("LeaderRequest Step 2 : Start sending append entries to the rest of the cluster.\n\tThere is already "
 				+ "A thread doing this, so we just have to wait for the thread to get to the current operation and break.",
 				DEBUG);
 
+		// Awake heartbeaters to start sending everything
+		for ( RaftThread t : heartbeaters ) {
+			t.awakeThread();
+		}
+		
 		do {
-			if (state != RaftState.LEADER) {
+			if ( state != RaftState.LEADER ) {
 				// If we have changed of state unsuccessful request.
-				return new RequestResponse(leader, false);
+				return new RequestResponse (leader, false);
 			}
 
 			// Commit index MUST be updated when persisted at threads.
-			if (indexCommitRequired >= commitIndex) {
-				log("The entry " + indexCommitRequired + " has been committed",
-						DEBUG);
+			if ( indexCommitRequired <= commitIndex ) {
+				log("The entry " + indexCommitRequired + " has been committed", DEBUG);
 				break;
 			}
 
-			// Alternative way
-			// if ( isIndexCommitted(indexCommitRequired) ) {
-			// break;
-			// }
 			try {
 				Thread.sleep(10); // Wait to avoid excessive cpu usage.
 			} catch (Exception e) {
@@ -558,7 +549,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			// Check for a new leader.
 			if (!leaderId.equals(leader)) {
 				// If change of leader
-				log("Accepted leader " + leaderId, ERROR);
+				log("Accepted leader " + leaderId, INFO);
 				leader = leaderId;
 
 				// Set to follower if a different leader from us.
@@ -570,7 +561,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		} else {
 			if (leader != null) {
 				// If we remove the leader.
-				log("Leader rejected " + leader, ERROR);
+				log("Leader rejected " + leader, INFO);
 				leader = null;
 			}
 		}
@@ -673,12 +664,12 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			}
 			break;
 		case FOLLOWER:
-			log(">>>>>>>>>>>>>>>>>>>>>>>>>>> I've become a FOLLOWER <<<<<<<<<<<<<<<<<<<<<<<<<", WARN);
+			log(">>>>>>>>>>>>>>>>>>>>>>>>>>> I've become a FOLLOWER <<<<<<<<<<<<<<<<<<<<<<<<<", INFO);
 			// Grant time to the leader to send heartbeats
 			leaderWatcher.onHeartbeat();
 			break;
 		case CANDIDATE:
-			log(">>>>>>>>>>>>>>>>>>>>>>>>>>> I've become a CANDIDATE <<<<<<<<<<<<<<<<<<<<<<<<<", WARN);
+			log(">>>>>>>>>>>>>>>>>>>>>>>>>>> I've become a CANDIDATE <<<<<<<<<<<<<<<<<<<<<<<<<", INFO);
 			// Grant time to the election before restarting it.
 			leaderWatcher.onHeartbeat();
 			break;
@@ -718,26 +709,26 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	 */
 	private boolean grantVote(long term, String candidateId, int lastLogIndex, long lastLogTerm) {
 		synchronized (guard) {
-//			Receiver implementation:
-//				1. Reply false if term < currentTerm (§5.1)
+			//			Receiver implementation:
+			//				1. Reply false if term < currentTerm (§5.1)
 			if ( term < getCurrentTerm() ) {
 				log("Not accepting other leader because his term is less than ours.", WARN);
 				return false;
 			}
-			
+
 			// If higher term, update our own. This will clean the voted for object.
 			if ( term > persistentState.getCurrentTerm() ) {
 				persistentState.setCurrentTerm(term);
 				changeState(RaftState.FOLLOWER);
-				log("Updating my term to " + term, WARN);
+				log("Updating my term to " + term, INFO);
 			}
-			
-//				2. If votedFor is null or candidateId,
+
+			//				2. If votedFor is null or candidateId,
 			if ( persistentState.getVotedFor() != null && !persistentState.getVotedFor().equals(candidateId) ) {
-				log("Not granting vote because i've already voted to " + persistentState.getVotedFor(), WARN);
+				log("Not granting vote because i've already voted to " + persistentState.getVotedFor(), INFO);
 				return false;
 			}
-//			 and candidate's log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+			//			 and candidate's log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
 			if ( fresherLog(lastLogIndex, lastLogTerm) ) {
 				log("Not granting vote because our term is fresher: "
 						+ "[" + persistentState.getLastLogTerm() + "," + persistentState.getLastLogIndex() + "]" 
@@ -752,7 +743,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			// Add some time to election timeout.
 			leaderWatcher.onHeartbeat();
 
-			log("Granting my vote to " + candidateId, WARN);
+			log("Granting my vote to " + candidateId, INFO);
 			return true;
 		}
 	}
@@ -766,7 +757,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		if ( persistentState.getLastLogTerm() > lastLogTerm) {
 			return true;
 		}
-		
+
 		if ( persistentState.getLastLogTerm() < lastLogTerm) {
 			return false; 
 		}
@@ -783,7 +774,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			// The change state will start the heartbeats.
 			log("I've  received " + Integer.toString(receivedVotes.size())
 					+ " votes, and the required set size is:"
-					+ Integer.toString(requiredVotes), ERROR);
+					+ Integer.toString(requiredVotes), INFO);
 			synchronized (guard) {
 				changeState(RaftState.LEADER);
 			}
@@ -804,6 +795,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			int prevLogIndex, long prevLogTerm, List<LogEntry> entries,
 			int leaderCommit) throws RemoteException {
 		log(" Received appendEntry for state: " + state, DEBUG);
+		log ("With prev index: [" + prevLogTerm + "," + prevLogIndex + "]" , DEBUG);
+		log ("With entries : " + entries , DEBUG);
 		switch (state) {
 		case FOLLOWER:
 			return followerAppendEntries(term, leaderId, prevLogIndex,
@@ -883,7 +876,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 					+ persistentState.getCurrentTerm() + " : " + msg);
 		}
 	}
-	
+
 	/**
 	 * Based on nextIndex, calculate the commit index.
 	 */
@@ -893,24 +886,25 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			if ( !isLeader() ) {
 				return;
 			}
-			
+
 			int lastIndex = commitIndex;
 			// For each value that can be commited, check if it is so.
 			int lastLogIndex = persistentState.getLastLogIndex();
-			log ("Iterating from " + lastIndex + " to " + lastLogIndex + " to get the new commit index",WARN);
-			for ( int i = lastIndex ; i < lastLogIndex ; i++ ) {
+
+			// Iterate and search commit index.
+			for ( int i = lastIndex ; i <= lastLogIndex ; i++ ) {
 				if ( matchIndex.majorityHigherOrEqual(i) ) {
 					commitIndex = i;
 				}
 			}
 			// Only if modifications awake thread.
 			if ( lastIndex != commitIndex ) {
-				log ( "Committed data up to " + commitIndex + " , awaking thread.",WARN);
+				log ( "Committed data up to entry " + commitIndex + " , awaking thread.",WARN);
 				committer.awakeThread();
 			}
 		}
 	}
-	
+
 
 	/******************************************************************************
 	 * 
@@ -1054,41 +1048,52 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				}
 			}
 
-			int lastIndex,index;
-			long indexTerm;
+			int lastLogIndex,prevLogindex;
+			long prevLogTerm,term;
 			List<LogEntry> entries;
 
 			// Load in a guarded section
+			int nextIndexInt = nextIndex.getIndex(host.getId());
+			
 			synchronized (guard) {
-				lastIndex = persistentState.getLastLogIndex();
+				// My term
+				term = getCurrentTerm();
+				
+				// Get the last index in our log.
+				lastLogIndex = persistentState.getLastLogIndex();
 
-				// Get index and term.
-				index = nextIndex.getIndex(host.getId());
-				indexTerm = persistentState.getTerm(index);
-
-				// Load entries or null list if it wasn't possible
-
-				try {
-					entries = persistentState.getLogEntries(index); // Starts at position 1.
-				} catch (Exception e){
+				// * If last log index ≥ nextIndex for a follower: send
+				// AppendEntries RPC with log entries starting at nextIndex
+				if ( lastLogIndex >= nextIndexInt ) {
+					entries = persistentState.getLogEntries(nextIndexInt); // Starts at position 1.
+				}
+				// No entries to send.
+				else {
 					entries = new ArrayList<LogEntry>();
 				}
+				
+				// Get prev index and term for the append.
+				prevLogindex = nextIndexInt - 1;
+				prevLogTerm = persistentState.getTerm(prevLogindex);
 			}
 
 			try {
 				log("Starting to send heartbeat", DEBUG);
 				AppendEntriesResponse appendResponse = communication.appendEntries(host,
-						persistentState.getCurrentTerm(), leader, index,
-						indexTerm, entries, commitIndex); // Send entries from nextindex on.
+						term, leader, prevLogindex,
+						prevLogTerm, entries, commitIndex); // Send entries from nextindex on.
 
 				log("Sent heartbeat to " + host.getId(), DEBUG);
 
+				if ( entries.size() > 0 ) {
+					log ("Sent to " + host.getId() + " entries from index " + nextIndexInt + " containing : " + entries, WARN);
+				}
+				
 				// Controlling null pointer exception
 				if (appendResponse == null) {
 					// Do not retry, the other host has returned null, but the
 					// communication hasn't failed. This should never happen.
-					log("<<<<<<<<< RECEIVED NULL APPEND RESPONSE FROM HOST "
-							+ host + ". THIS SHOULD NEVER HAPPEN.", ERROR);
+					log("<<<<<<<<< RECEIVED NULL APPEND RESPONSE FROM HOST " + host + ". THIS SHOULD NEVER HAPPEN.", ERROR);
 					return;
 				}
 
@@ -1101,26 +1106,31 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 						setLeader(null);
 						persistentState.setCurrentTerm(appendResponse.getTerm());
 					}
+					return;
 				}
 
-				// If AppendEntries succeeded
-				if (appendResponse.isSucceeded()) {
+
+				//				* If successful: update nextIndex and matchIndex for follower (§5.3)
+				if ( appendResponse.isSucceeded() ) {
 					log("<<<<<<<<<<< AppendEntries accepted from host " + host,	INFO);
 					synchronized (guard) {
 						// Update indexes
-						if ( lastIndex > matchIndex.getIndex(host.getId()) ) {
-							matchIndex.setIndex(host.getId(), lastIndex + 1);
-						}
-						if ( lastIndex > nextIndex.getIndex(host.getId()) ) {
-							nextIndex.setIndex(host.getId(), lastIndex + 1);
+						if ( matchIndex.getIndex(host.getId()) < lastLogIndex ) {
+							log("Updating match index to " + lastLogIndex,WARN);
+							matchIndex.setIndex(host.getId(), lastLogIndex);
 							// Only after recalculate commit index is this one.
 							recalculateCommitIndex();
 						}
+						if ( nextIndexInt < lastLogIndex + 1) {
+							log("Updating next index to " + (lastLogIndex + 1),WARN);
+							nextIndex.setIndex(host.getId(), lastLogIndex + 1);
+						}
 					}
 				}
-				// If failed to persist, the other one needs a higher
+				//				* If AppendEntries fails because of log inconsistency:
+				//				decrement nextIndex and retry (§5.3)
 				else {
-					log("<<<<<<<<<<< AppendEntries rejected from host " + host + " decreasing its index.", ERROR);
+					log("<<<<<<<<<<< AppendEntries rejected from host " + host + " decreasing its index to " + (nextIndexInt - 1), ERROR);
 					synchronized (guard) {
 						nextIndex.decrease(host.getId());						
 					}
@@ -1130,7 +1140,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			} catch (Exception e) {
 				// Retry if some error has happened (probably IOException).
 				log ("Exception happened during the heartbeat delivery: " + e.getClass(), INFO);
-//				e.printStackTrace();
+				//				e.printStackTrace();
 				return;
 			}
 		}
@@ -1167,12 +1177,12 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			// If the term has been updated to a newer one, stop the execution.
 			synchronized (guard) {
 				if ( isLeader() ) {
-					log("Stopping vote requester because we are already the leader." , WARN);
+					log("Stopping vote requester because we are already the leader." , INFO);
 					stopThread();
 					return;
 				}
 				if (term < persistentState.getCurrentTerm() ) {
-					log("Stopping vote requester because the term has been incremented." , WARN);
+					log("Stopping vote requester because the term has been incremented." , INFO);
 					stopThread();
 					return;
 				}
@@ -1264,7 +1274,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				log("Not starting an election because we are not currently connected", VERBOSE);
 				return;
 			}
-			
+
 			// If leader, don't start an election
 			if ( isLeader() ) {
 				log("Not starting an election because we are the current leader", VERBOSE);
@@ -1298,7 +1308,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	public class CommitterThread extends RaftThread {
 		@Override
 		protected void onIteration() {
-			synchronized (recipes) {
+			synchronized ( guard ) {
 				log("Getting entries from point " + (lastApplied + 1), VERBOSE);
 				List<LogEntry> entries = persistentState.getLogEntries(lastApplied + 1);
 				for ( LogEntry entry : entries ) {
@@ -1328,16 +1338,16 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			return 5000l;
 		}
 	}
-	
+
 	/**
 	 * Custom index to calculate correctly if a majority exists during cluster operation
 	 */
 	public class CustomIndex extends Index {
-		
+
 		public CustomIndex(List<Host> servers, int intialIndex) {
 			super(servers, intialIndex);
 		}
-		
+
 		public boolean majorityHigherOrEqual(int n){
 			int count = 0;
 			for (Host h : otherServers){
@@ -1352,6 +1362,6 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 			}
 			return false;
 		}
-		
+
 	}
 }
