@@ -54,17 +54,18 @@ import communication.rmi.RMIsd;
 
 public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
-	private static final SimpleDateFormat SIMPLE_DATE_FORMAT = new SimpleDateFormat(
-			"HH:MM:ss.SSS");
+	// The date formatter for output
+	private static final SimpleDateFormat SIMPLE_DATE_FORMAT = new SimpleDateFormat("HH:MM:ss.SSS");
 
+	// The guard object
 	private static final Object guard = new Object();
 
+	// Logging constants
 	private static final int VERBOSE = 0;
 	private static final int DEBUG = 1;
 	private static final int INFO = 2;
 	private static final int WARN = 3;
 	private static final int ERROR = 4;
-
 	private static final int DEBUG_LEVEL = WARN; // Everything from DEBUG_LEVEL to above will be logged.
 
 	// current server
@@ -128,7 +129,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	// included in the list)
 
 	// The number of votes required to become the leader (i.e. majority).
-	private int requiredVotes;
+	private int clusterMajority;
 
 	// If true we are currently connected
 	private AtomicBoolean connected = new AtomicBoolean(false);
@@ -152,10 +153,8 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	// === IMPLEMENTATION
 	// =======================
 
-	public RaftConsensus(long electionTimeout) { // electiontimeout is a
-		// parameter in
-		// config.properties file
-		// set electionTimeout
+	public RaftConsensus(long electionTimeout) { 
+		// electiontimeout is a parameter in config.properties file
 		this.electionTimeout = electionTimeout;
 
 		// set leaderHeartbeatTimeout
@@ -174,7 +173,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		this.otherServers = otherServers;
 		numServers = otherServers.size() + 1;
 		// Holds the number of required votes.
-		requiredVotes = (numServers / 2) + 1;
+		clusterMajority = (numServers / 2) + 1;
 	}
 
 	// connect
@@ -217,29 +216,29 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		// Stop all threads.
 		synchronized (guard) {
 			connected.set(false);
-		}
 
-		// Stop vote requesters.
-		for (RaftThread t : voteRequesters) {
-			t.stopThread();
-		}
-
-		// Stop heartbeaters.
-		for (RaftThread t : heartbeaters) {
-			t.stopThread();
-		}
-
-		// Wait threads:
-
-		try {
+			// Stop vote requesters.
 			for (RaftThread t : voteRequesters) {
-				t.join();
+				t.stopThread();
 			}
+
+			// Stop heartbeaters.
 			for (RaftThread t : heartbeaters) {
-				t.join();
+				t.stopThread();
 			}
-		} catch (InterruptedException e) {
-			e.printStackTrace();
+
+			// Wait threads:
+
+			try {
+				for (RaftThread t : voteRequesters) {
+					t.join();
+				}
+				for (RaftThread t : heartbeaters) {
+					t.join();
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -259,7 +258,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	 */
 	private void startElection() {
 		// Steps
-		synchronized (guard) {
+		synchronized ( guard ) {
 			// 2-Change to candidate state
 			if (state == RaftState.CANDIDATE) {
 				log(">>>>>>>> The election ended without choosing a leader, therefore, it will be restarted <<<<<<<<<< ", INFO);
@@ -316,12 +315,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	 * @param leaderId : so follower can redirect clients
 	 * @param prevLogIndex : index of log entry immediately preceding new ones
 	 * @param prevLogTerm : term of prevLogIndex entry
-	 * @param entries : log entries to store (empty for heartbeat: may send more
-	 *  than one for efficiency)
+	 * @param entries : log entries to store
 	 * @param leaderCommit : leader's commitIndex
 	 * @return AppendEntriesResponse: term (currentTerm, for leader to update itself), 
-	 * 	success (true if follower contained entry matching
-	 *  prevLongIndex and prevLogTerm)
+	 * 	success (true if follower contained entry matching prevLongIndex and prevLogTerm)
 	 */
 	private AppendEntriesResponse followerAppendEntries(long term,
 			String leaderId, int prevLogIndex, long prevLogTerm,
@@ -438,7 +435,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		for ( RaftThread t : heartbeaters ) {
 			t.awakeThread();
 		}
-		
+
 		do {
 			if ( state != RaftState.LEADER ) {
 				// If we have changed of state unsuccessful request.
@@ -770,11 +767,11 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 	 * leader.
 	 */
 	protected void onReceivedVote() {
-		if (receivedVotes.size() >= requiredVotes) {
+		if (receivedVotes.size() >= clusterMajority) {
 			// The change state will start the heartbeats.
 			log("I've  received " + Integer.toString(receivedVotes.size())
 					+ " votes, and the required set size is:"
-					+ Integer.toString(requiredVotes), INFO);
+					+ Integer.toString(clusterMajority), INFO);
 			synchronized (guard) {
 				changeState(RaftState.LEADER);
 			}
@@ -1054,11 +1051,11 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 			// Load in a guarded section
 			int nextIndexInt = nextIndex.getIndex(host.getId());
-			
+
 			synchronized (guard) {
 				// My term
 				term = getCurrentTerm();
-				
+
 				// Get the last index in our log.
 				lastLogIndex = persistentState.getLastLogIndex();
 
@@ -1071,7 +1068,7 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 				else {
 					entries = new ArrayList<LogEntry>();
 				}
-				
+
 				// Get prev index and term for the append.
 				prevLogindex = nextIndexInt - 1;
 				prevLogTerm = persistentState.getTerm(prevLogindex);
@@ -1085,10 +1082,10 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 
 				log("Sent heartbeat to " + host.getId(), DEBUG);
 
-				if ( entries.size() > 0 ) {
+				if ( entries.size() > 0 && appendResponse.isSucceeded() ) {
 					log ("Sent to " + host.getId() + " entries from index " + nextIndexInt + " containing : " + entries, WARN);
 				}
-				
+
 				// Controlling null pointer exception
 				if (appendResponse == null) {
 					// Do not retry, the other host has returned null, but the
@@ -1349,13 +1346,13 @@ public abstract class RaftConsensus extends CookingRecipes implements Raft {
 		}
 
 		public boolean majorityHigherOrEqual(int n){
-			int count = 0;
+			int count = 1; // The leader himself
 			for (Host h : otherServers){
 				int i = getIndex(h.getId());
 				if (Integer.valueOf(i) >= n){
 					count++;
 					// For optimization.
-					if ( count >= otherServers.size() / 2) {
+					if ( count >= clusterMajority) {
 						return true;
 					}
 				}
