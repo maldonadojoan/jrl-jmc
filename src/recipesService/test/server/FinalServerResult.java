@@ -18,28 +18,29 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package recipesService.test.server;
 
-import lsim.application.ApplicationManager;
+import java.io.Serializable;
 
 /**
- * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
- * October 2013
+ * January 2012
  *
  */
 
-public class DSException extends Exception{
+public class FinalServerResult extends ResultBase implements Serializable{
 
+	private static final long serialVersionUID = 8109894826923035975L;
 
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
-		super();
+	public FinalServerResult(ServerResult serverResult){
+		super(serverResult);
 	}
-
-	public DSException(String s){
-		super(s);
+	
+	public ResultType type(){
+		return ResultType.FINAL;
 	}
-
+	
+	public String toString(){
+		return "[" + this.type() + "] " +this.getServerResult();
+	}
 }

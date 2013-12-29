@@ -18,28 +18,22 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package lsimElement.evaluator;
 
-import lsim.application.ApplicationManager;
+/*
+* @author Joan-Manuel Marques
+* January 2013
+*
+*/
+public class EndReceivingResults extends RuntimeException{
 
-/**
- * Exceptions for this practical assignment
- * @author Joan-Manuel Marques
- * October 2013
- *
- */
+	private static final long serialVersionUID = 3126874575059542630L;
 
-public class DSException extends Exception{
-
-
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
+	public EndReceivingResults(){
 		super();
 	}
 
-	public DSException(String s){
+	public EndReceivingResults(String s){
 		super(s);
 	}
-
 }

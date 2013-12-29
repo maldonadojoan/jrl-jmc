@@ -18,28 +18,34 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package lsimElement.recipesService.client;
 
-import lsim.application.ApplicationManager;
+import java.io.IOException;
+
+import recipesService.communication.Host;
+
+import util.Serializer;
+import edu.uoc.dpcs.lsim.utils.LSimParameters;
+import lsim.application.handler.Handler;
 
 /**
- * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
- * October 2013
+ * November 2013
  *
  */
 
-public class DSException extends Exception{
+public class WorkerInitClientHandler implements Handler {
 
+	private LSimParameters params;
+	
+	@Override
+	public Object execute(Object obj) {
+		params = (LSimParameters) obj;
 
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
-		super();
+		return null;
 	}
 
-	public DSException(String s){
-		super(s);
+	public LSimParameters getParameters(){
+		return params;
 	}
-
 }

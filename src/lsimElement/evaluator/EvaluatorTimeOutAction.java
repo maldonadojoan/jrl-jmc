@@ -18,28 +18,29 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package lsimElement.evaluator;
 
-import lsim.application.ApplicationManager;
+import edu.uoc.dpcs.lsim.LSimFactory;
+import edu.uoc.dpcs.lsim.exceptions.LSimExceptionMessage;
+import lsim.application.handler.Handler;
 
 /**
- * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
- * October 2013
+ * January 2013
  *
  */
+public class EvaluatorTimeOutAction implements Handler{
 
-public class DSException extends Exception{
-
-
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
-		super();
-	}
-
-	public DSException(String s){
-		super(s);
+	@Override
+	public Object execute(Object arg0){
+//    	System.out.println("--- *** ---> Evaluator was unable to evaluate results due to: Not all required data received.");
+    	LSimFactory.getEvaluatorInstance().log(
+				"",
+				"--- *** ---> Evaluator was unable to evaluate results due to: Not all required data received."
+				);
+		LSimFactory.getEvaluatorInstance().logException(new LSimExceptionMessage("Evaluator was unable to evaluate results due to: Not all required data received.", null, null));
+    	throw new EndReceivingResults();
+//		return null;
 	}
 
 }
