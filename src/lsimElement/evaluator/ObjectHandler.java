@@ -18,28 +18,27 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package lsimElement.evaluator;
 
-import lsim.application.ApplicationManager;
+import lsim.application.handler.Handler;
 
 /**
- * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
- * October 2013
+ * December 2012
  *
  */
+public class ObjectHandler<E> implements Handler {
+	
+	private E value;
 
-public class DSException extends Exception{
-
-
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
-		super();
+	@Override
+	public Object execute(Object obj) {
+		value = (E) obj;		
+		return value;
 	}
 
-	public DSException(String s){
-		super(s);
+	public E getValue() {
+		return value;
 	}
 
 }

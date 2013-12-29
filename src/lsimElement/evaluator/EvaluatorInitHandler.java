@@ -18,28 +18,49 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package lsimElement.evaluator;
 
-import lsim.application.ApplicationManager;
+import edu.uoc.dpcs.lsim.utils.LSimParameters;
+
+import lsim.application.handler.Handler;
 
 /**
- * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
- * October 2013
+ * December 2012
  *
  */
-
-public class DSException extends Exception{
-
-
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
-		super();
+public class EvaluatorInitHandler implements Handler {
+	
+	LSimParameters values;
+	
+	@Override
+	public Object execute(Object obj) {
+		values = (LSimParameters) obj;
+		
+		return null;
+	}
+	
+	public int getPercentageRequiredResults(){
+		return Integer.parseInt((String)values.get("percentageRequieredResults"));
 	}
 
-	public DSException(String s){
-		super(s);
+	public int getNumNodes(){
+		return ((Integer) values.get("numServers")).intValue();
+	}
+	
+	public String getGroupId(){
+		return ((String) values.get("groupId"));
+	}
+	
+	public String getPhase(){
+		return ((String) values.get("phase"));
+	}
+	
+	public String getRecipeDeadTitle(){
+		return ((String) values.get("recipeDeadTitle"));
 	}
 
+	public String getRecipeSurviveTitle(){
+		return ((String) values.get("recipeSurviveTitle"));
+	}
 }

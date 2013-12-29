@@ -18,16 +18,16 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package lsimElement.recipesService;
+package lsimElement.coordinator;
 
 import java.io.IOException;
-import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.List;
 
-import edu.uoc.dpcs.lsim.utils.LSimParameters;
 import recipesService.communication.Host;
-import recipesService.communication.Hosts;
 import util.Serializer;
+
+import edu.uoc.dpcs.lsim.LSimFactory;
 
 import lsim.application.handler.Handler;
 
@@ -36,34 +36,33 @@ import lsim.application.handler.Handler;
  * December 2012
  *
  */
-public class WorkerStartHandler implements Handler {
+public class CoordinatorStartHandler implements Handler {
 	
-	private Object values;
+	private List<Object> workers;
 
 	@Override
 	public Object execute(Object obj) {
-		values = obj;
-		return null;
-	}
-
-	public Hosts getParticipants(){
-		return getParticipants(null);
-	}
-	
-	public Hosts getParticipants(Host localNode) {
-		Hosts participants = new Hosts(localNode);
-		List<Object> startValues = (List<Object>) values;
-		for (Object object : startValues){
+		List<Object> workersAux = (List<Object>) obj;
+//		System.out.println("-- ** --> CoordinatorStartHandler -- values: " + values);
+		LSimFactory.getCoordinatorInstance().log(
+				"",
+				"-- ** --> CoordinatorStartHandler -- values: " + workersAux
+				);
+		workers = new ArrayList<Object>();
+		for (Object object: workersAux){
 			if (object != null){
 				try {
-					Host host = (Host) Serializer.deserialize((byte []) object);
-					participants.add(host);
+					workers.add((Host) Serializer.deserialize((byte []) object));
 				} catch (Exception e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
 		}
-		return participants;
+		return workers;
+	}
+
+	public int numWorkers(){
+		return workers.size();
 	}
 }

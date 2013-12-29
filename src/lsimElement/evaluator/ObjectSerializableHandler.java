@@ -18,28 +18,43 @@
 * along with this code.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-package communication;
+package lsimElement.evaluator;
 
-import lsim.application.ApplicationManager;
+import java.io.IOException;
+
+import util.Serializer;
+import lsim.application.handler.Handler;
+import lsim.result.Result;
 
 /**
- * Exceptions for this practical assignment
  * @author Joan-Manuel Marques
- * October 2013
+ * December 2012
  *
  */
+public class ObjectSerializableHandler<E> implements Handler {
+	
+	private E value = null;
+	private Result result = null;
 
-public class DSException extends Exception{
-
-
-	private static final long serialVersionUID = 6974837249191517847L;
-
-	public DSException(){
-		super();
+	@Override
+	public Object execute(Object obj) {
+		if (obj == null){
+			return null;
+		}
+		try {
+			result = (Result) obj;
+			value = (E) Serializer.deserialize((byte []) result.value());
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			//			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			//			e.printStackTrace();
+		}
+		return value;
 	}
 
-	public DSException(String s){
-		super(s);
+	public E value() {
+		return value;
 	}
-
 }

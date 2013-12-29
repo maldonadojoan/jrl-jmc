@@ -259,7 +259,7 @@ public class Client extends Thread{
 		 			// response.getLeader() is null when simulatingActivity is false (i.e. simulation activity phase is finished)
 		 			stop = true;
 		 		}
-			} catch (RemoteException | NotBoundException e) {
+			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				//						e.printStackTrace();
 				System.err.println("["+clientId+"] Destination host "+sendTo+" not reachable: a network error has occured or the testing environment simulates that the destination host is failed");
